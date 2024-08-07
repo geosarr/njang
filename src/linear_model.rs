@@ -48,7 +48,7 @@ macro_rules! impl_lin_reg {
             type FitResult = Result<(), LinalgError>;
             type X = Array2<T>;
             type Y = Array<T, $ix>;
-            type PredictResult = Result<(), ()>;
+            type PredictResult = Result<Array<T, $ix>, ()>;
             fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
                 match self.solver {
                     LinearRegressionSolver::Svd => {
@@ -89,8 +89,24 @@ macro_rules! impl_lin_reg {
                 }
                 Ok(())
             }
-            fn predict(&self, _x: &Self::X) -> Self::PredictResult {
-                Ok(())
+            fn predict(&self, x: &Self::X) -> Self::PredictResult {
+                if self.fit_intercept {
+                    if let Some(ref coef) = &self.coef {
+                        if let Some(ref intercept) = &self.intercept {
+                            Ok(intercept + x.dot(coef))
+                        } else {
+                            panic!("No intercept")
+                        }
+                    } else {
+                        panic!("No coef")
+                    }
+                } else {
+                    if let Some(ref coef) = &self.coef {
+                        Ok(x.dot(coef))
+                    } else {
+                        panic!("No coef")
+                    }
+                }
             }
         }
     };
