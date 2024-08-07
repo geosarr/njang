@@ -1,0 +1,10 @@
+[package]
+name = "njang"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+num-traits = { version = "0.2.19", default-features = false, features = ["libm"] }
+ndarray = {version ="0.15.6"}
+ndarray-linalg = { version = "0.16.0", features = ["openblas-static"] } 
