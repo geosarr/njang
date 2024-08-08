@@ -17,6 +17,15 @@ mod tests {
         let intercept_star = lin_reg.intercept().unwrap();
         assert!((coef_star[0] - coef[0]).abs() < 1e-6);
         assert!((coef_star[1] - coef[1]).abs() < 1e-6);
+        let pred_error = lin_reg
+            .predict(&x)
+            .unwrap()
+            .into_iter()
+            .zip(&y)
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f32>()
+            .sqrt();
+        assert!(pred_error < 1e-6);
         println!("{:?}", intercept_star - intercept);
     }
 }
