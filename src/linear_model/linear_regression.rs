@@ -3,7 +3,7 @@ use ndarray::{linalg::Dot, Array, Array2, Axis, Ix0, Ix1, Ix2, ScalarOperand};
 use crate::RegressionModel;
 use ndarray_linalg::{error::LinalgError, Inverse, Lapack, LeastSquaresSvd};
 
-/// Solver to use when fitting a linear regression model
+/// Solver to use when fitting a linear regression model (Ordinary Least Squares, OLS).
 pub enum LinearRegressionSolver {
     /// Solves the problem using Singular Value Decomposition
     Svd,
@@ -16,11 +16,13 @@ impl Default for LinearRegressionSolver {
     }
 }
 
-/// Ordinary-Least-Squares: minimization of L2-norm ||xb - y|| with respect to b.
+/// Ordinary Least Squares (OLS)
 ///
-/// The vector of coefficients b = self.coef if `self.fit_intercept = false` else (self.intercept, self.coef)'.
+/// Minimization of the L2-norm `||xb - y||`<sup/>2</sup> with respect to `b`, for regressors/predictors `x` and targets `y`.
 ///
-/// It is able to fit at once many regressions with the same input regressors `x`.
+/// The vector of coefficients `b = self.coef` if `self.fit_intercept = false` else  `b = (self.intercept, self.coef)'`.
+///
+/// It is able to fit at once many regressions with the same input regressors `x`, when `x` and `y` are of type `Array2<T>` from ndarray crate.
 pub struct LinearRegression<C, I> {
     solver: LinearRegressionSolver,
     coef: Option<C>,
