@@ -17,3 +17,10 @@ pub trait RegressionModel {
 //     fn predict(&self, x: &Self::X) -> Self::PredictResult;
 //     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult;
 // }
+
+pub trait Info {
+    type MeanOutput;
+    type RowOutput;
+    fn mean(&self) -> Self::MeanOutput;
+    fn get_row(&self, i: usize) -> Self::RowOutput;
+}
