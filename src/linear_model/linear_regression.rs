@@ -16,7 +16,7 @@ pub enum LinearRegressionSolver {
 }
 
 /// Hyperparameters used in a linear regression model
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LinearRegressionHyperParameter {
     pub fit_intercept: bool,
     pub solver: LinearRegressionSolver,

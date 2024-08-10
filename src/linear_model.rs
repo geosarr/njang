@@ -7,7 +7,7 @@ use crate::traits::Info;
 pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
 };
-use ndarray::{Array, Array2, Axis, Ix0, Ix1, Ix2};
+use ndarray::{Array, Axis, Ix0, Ix1, Ix2};
 use num_traits::{FromPrimitive, Zero};
 pub use ridge_regression::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver};
 
@@ -53,19 +53,3 @@ where
         self.row(i).to_owned()
     }
 }
-// macro_rules! impl_stat {
-//     ($ix:ty, $ix_smaller:ty) => {
-//         impl<T> Info for Array<T, $ix> {
-//             type MeanOutput = Array<$ft, $ix_smaller>;
-//             // type RowOutput = Array<$ft, $ix_smaller>;
-//             fn mean(&self) -> Self::MeanOutput {
-//                 self.mean_axis(Axis(0)).unwrap()
-//             }
-//             // fn row(&self, i: usize) -> {
-
-//             // }
-//         }
-//     };
-// }
-// impl_stat!(Ix1, Ix0);
-// impl_stat!(Ix2, Ix1);
