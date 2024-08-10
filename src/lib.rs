@@ -4,6 +4,7 @@ mod linear_model;
 mod traits;
 
 pub use linear_model::{
-    LinearRegression, LinearRegressionSolver, RidgeRegression, RidgeRegressionSolver,
+    LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver, RidgeRegression,
+    RidgeRegressionHyperParameter, RidgeRegressionSolver,
 };
 pub use traits::RegressionModel;

@@ -1,10 +1,7 @@
 mod tests {
-    use ridge_regression::RidgeRegressionHyperParameter;
-
     use super::super::*;
     use crate::RegressionModel;
     extern crate alloc;
-    use alloc::vec::Vec;
 
     #[test]
     fn test_lin_reg() {
@@ -16,16 +13,18 @@ mod tests {
         let coef = Array1::from_iter([1., 2.]); // Array2::from_shape_vec((2, 2), vec![1., 2., 1., 2.]).unwrap(); //
         let intercept = 3.;
         let y = x.dot(&coef) + intercept; // y = 1. * x_0 + 2. * x_1 + 3.
-        let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
-            fit_intercept: true,
-            solver: LinearRegressionSolver::Svd,
-        });
-        let _ = lin_reg.fit(&x, &y);
-        let coef_star = lin_reg.coef().unwrap();
-        let intercept_star = lin_reg.intercept().unwrap();
+        let mut svd_lin_reg =
+            LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
+                fit_intercept: true,
+                solver: LinearRegressionSolver::Svd,
+            });
+        let _ = svd_lin_reg.fit(&x, &y);
+        let coef_star = svd_lin_reg.coef().unwrap();
+        let intercept_star = svd_lin_reg.intercept().unwrap();
         assert!((coef_star[0] - coef[0]).abs() < 1e-6);
         assert!((coef_star[1] - coef[1]).abs() < 1e-6);
-        let pred_error = lin_reg
+        assert!((intercept_star - intercept).sum().abs() < 1e-6);
+        let pred_error = svd_lin_reg
             .predict(&x)
             .unwrap()
             .into_iter()
@@ -34,12 +33,23 @@ mod tests {
             .sum::<f32>()
             .sqrt();
         assert!(pred_error < 1e-6);
-        // println!("{:?}", intercept_star - intercept);
+
+        let mut qr_lin_reg =
+            LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
+                fit_intercept: true,
+                solver: LinearRegressionSolver::Qr,
+            });
+        let _ = qr_lin_reg.fit(&x, &y);
+        let coef_star = qr_lin_reg.coef().unwrap();
+        let intercept_star = qr_lin_reg.intercept().unwrap();
+        assert!((coef_star[0] - coef[0]).abs() < 1e-6);
+        assert!((coef_star[1] - coef[1]).abs() < 1e-6);
+        assert!((intercept_star - intercept).sum().abs() < 1e-6);
     }
 
     #[test]
     fn test_ridge_reg() {
-        use ndarray::{Array1, Array2, Axis};
+        use ndarray::{Array1, Array2}; //Axis
         let mut x = Vec::new();
         x.extend_from_slice(&[1f32, 1., 1., 2., 2., 2., 2., 3.]);
         let x = Array2::from_shape_vec((4, 2), x).unwrap();
@@ -65,12 +75,5 @@ mod tests {
         // println!("{:?}", ridge_exact.intercept());
         // println!("{:?}", ridge_sgd.coef());
         // println!("{:?}", ridge_sgd.intercept());
-    }
-    #[test]
-    fn test_() {
-        use ndarray::Array1;
-        let mut c = Vec::new();
-        c.extend_from_slice(&[1., 2., 1., 2.]);
-        println!("{:?}", Array2::from_shape_vec((2, 2), c).unwrap().shape());
     }
 }

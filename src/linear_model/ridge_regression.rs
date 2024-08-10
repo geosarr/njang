@@ -113,7 +113,7 @@ macro_rules! impl_ridge_reg {
             fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
                 if self.settings.fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
-                    match self.settings.solver {
+                    let coef = match self.settings.solver {
                         RidgeRegressionSolver::Sgd => {
                             let mut rng = ChaCha20Rng::seed_from_u64(
                                 self.settings.random_state.unwrap_or(0).into(),
@@ -136,22 +136,21 @@ macro_rules! impl_ridge_reg {
                                 let g_cost = alpha_norm * &coef + (xi.dot(&coef) - yi) * xi;
                                 coef = &coef - lambda * g_cost;
                             }
-                            self.intercept = Some(y_mean - x_mean.dot(&coef));
-                            self.coef = Some(coef);
+                            coef
                         }
                         RidgeRegressionSolver::Exact => {
                             let xct = x_centered.t();
-                            let coef = match (xct.dot(&x_centered)
+                            match (xct.dot(&x_centered)
                                 + self.settings.alpha * Array2::eye(x.ncols()))
                             .inv()
                             {
                                 Ok(mat) => mat.dot(&xct).dot(&y_centered),
                                 Err(error) => return Err(error),
-                            };
-                            self.intercept = Some(y_mean - x_mean.dot(&coef));
-                            self.coef = Some(coef)
+                            }
                         }
-                    }
+                    };
+                    self.intercept = Some(y_mean - x_mean.dot(&coef));
+                    self.coef = Some(coef);
                 } else {
                     match self.settings.solver {
                         RidgeRegressionSolver::Sgd => {}
