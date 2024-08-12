@@ -1,7 +1,7 @@
 use ndarray::{Array0, Array1, Array2};
 use njang::{
-    LinearRegression as LinReg, LinearRegressionHyperParameter, RegressionModel,
-    RidgeRegression as RidgeReg, RidgeRegressionHyperParameter, RidgeRegressionSolver,
+    RegressionModel, RidgeRegression as RidgeReg, RidgeRegressionHyperParameter,
+    RidgeRegressionSolver,
 };
 use numpy::{IntoPyArray, PyArray0, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -58,6 +58,8 @@ impl RidgeRegression {
                 RidgeRegressionSolver::Sgd
             } else if solvr == "exact" {
                 RidgeRegressionSolver::Exact
+            } else if solvr == "qr" {
+                RidgeRegressionSolver::Qr
             } else {
                 return Err(PyValueError::new_err(format!(
                     "solver `{}` not supported",

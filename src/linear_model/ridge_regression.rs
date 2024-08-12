@@ -4,7 +4,7 @@ use ndarray_rand::rand::Rng;
 use crate::RegressionModel;
 use crate::{linear_model::preprocess, traits::Info};
 use core::ops::{Add, Mul, Sub};
-use ndarray_linalg::{error::LinalgError, Inverse, Lapack};
+use ndarray_linalg::{error::LinalgError, Inverse, Lapack, QR};
 use ndarray_rand::{
     rand::{distributions::Distribution, SeedableRng},
     rand_distr::{StandardNormal, Uniform},
@@ -25,6 +25,8 @@ pub enum RidgeRegressionSolver {
     Sgd,
     /// Computing the exaction solution (x.t().dot(x) + alpha * eye).inverse().dot(x.t()).dot(y)
     Exact,
+    /// Uses QR decomposition of the matrix x.t().dot(x) + alpha * eye to solve the problem
+    Qr,
 }
 
 /// Hyperparameters used in a Ridge regression.
@@ -104,6 +106,7 @@ macro_rules! impl_ridge_reg {
             StandardNormal: Distribution<T>,
             Array2<T>: Dot<Array2<T>, Output = Array2<T>>
                 + Inverse<Output = Array2<T>>
+                + QR<Q = Array2<T>, R = Array2<T>>
                 + Dot<Array1<T>, Output = Array1<T>>
                 + Info<
                     MeanOutput = Array1<T>,
@@ -146,6 +149,20 @@ macro_rules! impl_ridge_reg {
                                 Err(error) => return Err(error),
                             }
                         }
+                        RidgeRegressionSolver::Qr => {
+                            let xct = x_centered.t();
+                            let (q, r) = match (xct.dot(&x_centered)
+                                + self.settings.alpha * Array2::eye(x.ncols()))
+                            .qr()
+                            {
+                                Ok((q, r)) => (q, r),
+                                Err(error) => return Err(error),
+                            };
+                            match r.inv() {
+                                Ok(inv_r) => inv_r.dot(&q.t().dot(&xct).dot(&y_centered)),
+                                Err(error) => return Err(error),
+                            }
+                        }
                     };
                     self.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.coef = Some(coef);
@@ -172,6 +189,16 @@ macro_rules! impl_ridge_reg {
                                     Err(error) => return Err(error),
                                 },
                             );
+                        }
+                        RidgeRegressionSolver::Qr => {
+                            let (q, r) = match x.qr() {
+                                Ok((q, r)) => (q, r),
+                                Err(error) => return Err(error),
+                            };
+                            self.coef = Some(match r.inv() {
+                                Ok(inv_r) => inv_r.dot(&q.t().dot(y)),
+                                Err(error) => return Err(error),
+                            });
                         }
                     }
                 }
