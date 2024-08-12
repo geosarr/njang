@@ -95,6 +95,32 @@ impl<C, I, T> RidgeRegression<C, I, T> {
 
 macro_rules! impl_ridge_reg {
     ($ix:ty, $ix_smaller:ty,  $randn:ident, $grad:ident) => {
+        impl<T> RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T> {
+            fn init_stochastic_algo(
+                &self,
+                x: &Array2<T>,
+                y: &Array<T, $ix>,
+            ) -> (T, usize, T, Array1<usize>, Array<T, $ix>)
+            where
+                T: Lapack,
+                StandardNormal: Distribution<T>,
+            {
+                let mut rng =
+                    ChaCha20Rng::seed_from_u64(self.settings.random_state.unwrap_or(0).into());
+                let (n_samples, n_features) = (x.nrows(), x.ncols());
+                let coef = $randn(n_features, y.shape(), &mut rng);
+                let max_iter = self.settings.max_iter.unwrap_or(1000);
+                let nf = T::from_f32(n_samples as f32).unwrap();
+                let lambda = T::from_f32(0.001).unwrap(); // to determine automatically.
+                let samples = Array::<usize, _>::random_using(
+                    self.settings.max_iter.unwrap_or(1000),
+                    Uniform::from(0..n_samples),
+                    &mut rng,
+                );
+                let alpha_norm = self.settings.alpha / nf;
+                (alpha_norm, max_iter, lambda, samples, coef)
+            }
+        }
         impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T>
         where
             for<'a> T: Lapack
@@ -130,15 +156,19 @@ macro_rules! impl_ridge_reg {
                 if self.settings.fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
                     let coef = match self.settings.solver {
-                        RidgeRegressionSolver::Sgd => stochastic_algo(
-                            &x_centered,
-                            &y_centered,
-                            self.settings.random_state,
-                            $randn,
-                            self.settings.max_iter,
-                            self.settings.alpha,
-                            $grad,
-                        ),
+                        RidgeRegressionSolver::Sgd => {
+                            let (alpha_norm, max_iter, lambda, samples, coef) =
+                                self.init_stochastic_algo(x, y);
+                            $grad(
+                                &x_centered,
+                                &y_centered,
+                                coef,
+                                max_iter,
+                                samples,
+                                alpha_norm,
+                                lambda,
+                            )
+                        }
                         RidgeRegressionSolver::Exact => {
                             let xct = x_centered.t();
                             match (xct.dot(&x_centered)
@@ -169,15 +199,10 @@ macro_rules! impl_ridge_reg {
                 } else {
                     match self.settings.solver {
                         RidgeRegressionSolver::Sgd => {
-                            self.coef = Some(stochastic_algo(
-                                x,
-                                y,
-                                self.settings.random_state,
-                                $randn,
-                                self.settings.max_iter,
-                                self.settings.alpha,
-                                $grad,
-                            ));
+                            let (alpha_norm, max_iter, lambda, samples, coef) =
+                                self.init_stochastic_algo(x, y);
+                            self.coef =
+                                Some($grad(x, y, coef, max_iter, samples, alpha_norm, lambda));
                         }
                         RidgeRegressionSolver::Exact => {
                             let xt = x.t();
@@ -224,96 +249,58 @@ macro_rules! impl_ridge_reg {
 impl_ridge_reg!(Ix1, Ix0, randn_1d, grad_1d);
 impl_ridge_reg!(Ix2, Ix1, randn_2d, grad_2d);
 
-fn stochastic_algo<T, Y, C, R, D, G>(
+fn grad_1d<T>(
     x: &Array2<T>,
-    y: &Y,
-    random_state: Option<u32>,
-    randn: R,
-    max_iter: Option<usize>,
-    alpha: T,
-    grad: G,
-) -> C
-where
-    for<'a> T: Lapack + Mul<&'a C, Output = C> + Mul<C, Output = C>,
-    Y: Info<ShapeOutput = Vec<usize>>,
-    R: Fn(usize, &[usize], &mut ChaCha20Rng) -> C,
-    C: Add<D, Output = C>,
-    for<'a> &'a C: Sub<C, Output = C>,
-    G: Fn(&Array2<T>, &Y, usize, &C) -> D,
-{
-    let mut rng = ChaCha20Rng::seed_from_u64(random_state.unwrap_or(0).into());
-    let coef = randn(x.ncols(), y.shape().as_slice(), &mut rng);
-    let (alpha_norm, max_iter, lambda, samples) =
-        sto_algo_entries(x.nrows(), alpha, max_iter, &mut rng);
-    sto_algo_output(grad, alpha_norm, lambda, samples, max_iter, x, y, coef)
-}
-
-fn sto_algo_entries<T, R>(
-    n_rows: usize,
-    alpha: T,
-    max_iter: Option<usize>,
-    rng: &mut R,
-) -> (T, usize, T, Array1<usize>)
-where
-    T: Lapack,
-    R: Rng,
-{
-    let max_iter = max_iter.unwrap_or(1000);
-    let nf = T::from_f32(n_rows as f32).unwrap();
-    let lambda = T::from_f32(0.001).unwrap(); // to determine automatically.
-    let samples = Array::<usize, _>::random_using(max_iter, Uniform::from(0..n_rows), rng);
-    let alpha_norm = alpha / nf;
-    (alpha_norm, max_iter, lambda, samples)
-}
-
-fn sto_algo_output<T, Y, C, D, G>(
-    grad: G,
+    y: &Array1<T>,
+    mut coef: Array1<T>,
+    max_iter: usize,
+    samples: Array1<usize>,
     alpha_norm: T,
     lambda: T,
-    samples: Array1<usize>,
-    max_iter: usize,
-    x: &Array2<T>,
-    y: &Y,
-    mut coef: C,
-) -> C
+) -> Array1<T>
 where
-    Y: Info<ShapeOutput = Vec<usize>>,
-    for<'a> T: Copy + Mul<&'a C, Output = C> + Mul<C, Output = C>,
-    C: Add<D, Output = C>,
-    for<'a> &'a C: Sub<C, Output = C>,
-    G: Fn(&Array2<T>, &Y, usize, &C) -> D,
+    Array1<T>:
+        Info<RowOutput = T> + Dot<Array1<T>, Output = T> + Add<Array1<T>, Output = Array1<T>>,
+    for<'a> &'a Array1<T>: Sub<Array1<T>, Output = Array1<T>>,
+    Array2<T>: Info<RowOutput = Array1<T>>,
+    T: Sub<T, Output = T> + Copy,
+    for<'a> T: Mul<Array1<T>, Output = Array1<T>> + Mul<&'a Array1<T>, Output = Array1<T>>,
 {
     for k in 0..max_iter {
         let i = samples[k];
-        let g_cost = alpha_norm * &coef + grad(x, y, i, &coef);
+        let xi = x.get_row(i);
+        let yi = y.get_row(i);
+        let g_cost = alpha_norm * &coef + (xi.dot(&coef) - yi) * xi;
         coef = &coef - lambda * g_cost;
     }
     coef
 }
 
-fn grad_1d<T>(x: &Array2<T>, y: &Array1<T>, i: usize, c: &Array1<T>) -> Array1<T>
-where
-    Array1<T>: Info<RowOutput = T> + Dot<Array1<T>, Output = T>,
-    Array2<T>: Info<RowOutput = Array1<T>>,
-    T: Sub<T, Output = T>,
-    for<'a> T: Mul<Array1<T>, Output = Array1<T>>,
-{
-    let xi = x.get_row(i);
-    let yi = y.get_row(i);
-    (xi.dot(c) - yi) * xi
-}
-
-fn grad_2d<T>(x: &Array2<T>, y: &Array2<T>, i: usize, c: &Array2<T>) -> Array2<T>
+fn grad_2d<T>(
+    x: &Array2<T>,
+    y: &Array2<T>,
+    mut coef: Array2<T>,
+    max_iter: usize,
+    samples: Array1<usize>,
+    alpha_norm: T,
+    lambda: T,
+) -> Array2<T>
 where
     Array1<T>: Dot<Array2<T>, Output = Array1<T>> + Mul<Array2<T>, Output = Array2<T>>,
     Array2<T>: Info<RowOutput = Array1<T>>,
-    T: Sub<T, Output = T> + Clone + num_traits::Zero,
+    T: Sub<T, Output = T> + Clone + num_traits::Zero + Copy,
+    for<'a> T: Mul<Array2<T>, Output = Array2<T>> + Mul<&'a Array2<T>, Output = Array2<T>>,
 {
-    let yi = y.get_row(i);
-    let xi = x.get_row(i);
-    let indices = (0..y.ncols()).map(|e| i).collect::<Vec<usize>>();
-    let mat_xi = x.select(Axis(0), &indices).t().to_owned();
-    (xi.dot(c) - yi) * mat_xi
+    for k in 0..max_iter {
+        let i = samples[k];
+        let xi = x.get_row(i);
+        let yi = y.get_row(i);
+        let indices = (0..y.ncols()).map(|_| i).collect::<Vec<usize>>();
+        let mat_xi = x.select(Axis(0), &indices).t().to_owned();
+        let g_cost = alpha_norm * &coef + (xi.dot(&coef) - yi) * mat_xi;
+        coef = &coef - lambda * g_cost;
+    }
+    coef
 }
 
 fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>
