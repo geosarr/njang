@@ -1,4 +1,4 @@
-use ndarray::{linalg::Dot, Array, Array1, Array2, Ix0, Ix1, Ix2, ScalarOperand};
+use ndarray::{linalg::Dot, Array, Array1, Array2, Axis, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_rand::rand::Rng;
 
 use crate::RegressionModel;
@@ -211,11 +211,8 @@ where
     Y: Info<ShapeOutput = Vec<usize>>,
     R: Fn(usize, &[usize], &mut ChaCha20Rng) -> C,
     C: Add<D, Output = C>,
-    Array1<T>: Dot<C>,
-    <Array1<T> as Dot<C>>::Output: Sub<Y::RowOutput>,
     for<'a> &'a C: Sub<C, Output = C>,
-    for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
-    G: Fn(&Array1<T>, Y::RowOutput, &C) -> D,
+    G: Fn(&Array2<T>, &Y, usize, &C) -> D,
 {
     let mut rng = ChaCha20Rng::seed_from_u64(random_state.unwrap_or(0).into());
     let coef = randn(x.ncols(), y.shape().as_slice(), &mut rng);
@@ -242,32 +239,6 @@ where
     (alpha_norm, max_iter, lambda, samples)
 }
 
-fn grad_1d<T, Y>(xi: &Array1<T>, yi: Y, c: &Array1<T>) -> Array1<T>
-where
-    Array1<T>: Dot<Array1<T>, Output = T>,
-    T: Sub<Y, Output = Y>,
-    for<'a> Y: Mul<&'a Array1<T>, Output = Array1<T>>,
-{
-    (xi.dot(c) - yi) * xi
-}
-
-fn grad_2d<T>(xi: &Array1<T>, yi: Array1<T>, c: &Array2<T>) -> Array2<T>
-where
-    Array1<T>: Dot<Array1<T>, Output = T> + Info<ColOutput = T>,
-    Array2<T>: Info<ColOutput = Array1<T>>,
-    T: Sub<T, Output = T> + Clone + num_traits::Zero,
-    for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
-{
-    let mut coef = Array2::<T>::zeros((c.nrows(), c.ncols()));
-    (0..yi.len())
-        .map(|i| {
-            coef.column_mut(i)
-                .assign(&grad_1d(xi, yi.get_col(i), &c.get_col(i)));
-        })
-        .for_each(drop);
-    coef
-}
-
 fn sto_algo_output<T, Y, C, D, G>(
     grad: G,
     alpha_norm: T,
@@ -279,23 +250,43 @@ fn sto_algo_output<T, Y, C, D, G>(
     mut coef: C,
 ) -> C
 where
-    Y: Info,
-    for<'a> T: Lapack + Mul<&'a C, Output = C> + Mul<C, Output = C>,
+    Y: Info<ShapeOutput = Vec<usize>>,
+    for<'a> T: Copy + Mul<&'a C, Output = C> + Mul<C, Output = C>,
     C: Add<D, Output = C>,
-    Array1<T>: Dot<C>,
-    <Array1<T> as Dot<C>>::Output: Sub<Y::RowOutput>,
     for<'a> &'a C: Sub<C, Output = C>,
-    for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
-    G: Fn(&Array1<T>, Y::RowOutput, &C) -> D,
+    G: Fn(&Array2<T>, &Y, usize, &C) -> D,
 {
     for k in 0..max_iter {
         let i = samples[k];
-        let xi = x.get_row(i);
-        let yi = y.get_row(i);
-        let g_cost = alpha_norm * &coef + grad(&xi, yi, &coef);
+        let g_cost = alpha_norm * &coef + grad(x, y, i, &coef);
         coef = &coef - lambda * g_cost;
     }
     coef
+}
+
+fn grad_1d<T>(x: &Array2<T>, y: &Array1<T>, i: usize, c: &Array1<T>) -> Array1<T>
+where
+    Array1<T>: Info<RowOutput = T> + Dot<Array1<T>, Output = T>,
+    Array2<T>: Info<RowOutput = Array1<T>>,
+    T: Sub<T, Output = T>,
+    for<'a> T: Mul<Array1<T>, Output = Array1<T>>,
+{
+    let xi = x.get_row(i);
+    let yi = y.get_row(i);
+    (xi.dot(c) - yi) * xi
+}
+
+fn grad_2d<T>(x: &Array2<T>, y: &Array2<T>, i: usize, c: &Array2<T>) -> Array2<T>
+where
+    Array1<T>: Dot<Array2<T>, Output = Array1<T>> + Mul<Array2<T>, Output = Array2<T>>,
+    Array2<T>: Info<RowOutput = Array1<T>>,
+    T: Sub<T, Output = T> + Clone + num_traits::Zero,
+{
+    let yi = y.get_row(i);
+    let xi = x.get_row(i);
+    let indices = (0..y.ncols()).map(|e| i).collect::<Vec<usize>>();
+    let mat_xi = x.select(Axis(0), &indices).t().to_owned();
+    (xi.dot(c) - yi) * mat_xi
 }
 
 fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>

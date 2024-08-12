@@ -24,6 +24,7 @@ mod tests {
         let mut coef = Vec::new();
         coef.extend_from_slice(&[1., 2., 3., 4.]);
         let coef = Array2::from_shape_vec((2, 2), coef).unwrap();
+        // println!("{:?}", coef);
         // y = 1. * x_0 + 3. * x_1 + intercept for regression 1
         // y = 2. * x_0 + 4. * x_1 + intercept for regression 2
         let y = x.dot(&coef) + intercept;
@@ -197,6 +198,8 @@ mod tests {
             max_iter: Some(100000),
         });
         let _ = ridge.fit(&x, &y);
+        // println!("{:?}", ridge.coef());
+        // println!("{:?}", ridge.intercept());
         assert!(l2_diff2(&coef, &ridge.coef().unwrap()) < 5e-3);
     }
 }
