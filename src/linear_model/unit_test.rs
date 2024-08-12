@@ -198,6 +198,5 @@ mod tests {
         });
         let _ = ridge.fit(&x, &y);
         assert!(l2_diff2(&coef, &ridge.coef().unwrap()) < 5e-3);
-        // println!("{:?}\n{:?}", ridge.coef(), ridge.intercept());
     }
 }

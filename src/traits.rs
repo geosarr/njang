@@ -22,7 +22,9 @@ pub trait Info {
     type MeanOutput;
     type RowOutput;
     type ColOutput;
+    type ShapeOutput;
     fn mean(&self) -> Self::MeanOutput;
     fn get_row(&self, i: usize) -> Self::RowOutput;
     fn get_col(&self, i: usize) -> Self::ColOutput;
+    fn shape(&self) -> Self::ShapeOutput;
 }

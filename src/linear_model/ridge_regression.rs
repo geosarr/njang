@@ -10,6 +10,8 @@ use ndarray_rand::{
     rand_distr::{StandardNormal, Uniform},
     RandomExt,
 };
+extern crate alloc;
+use alloc::vec::Vec;
 use num_traits::FromPrimitive;
 use rand_chacha::ChaCha20Rng;
 
@@ -103,8 +105,18 @@ macro_rules! impl_ridge_reg {
             Array2<T>: Dot<Array2<T>, Output = Array2<T>>
                 + Inverse<Output = Array2<T>>
                 + Dot<Array1<T>, Output = Array1<T>>
-                + Info<MeanOutput = Array1<T>, RowOutput = Array1<T>, ColOutput = Array1<T>>,
-            Array<T, Ix1>: Info<MeanOutput = Array<T, Ix0>, RowOutput = T, ColOutput = T>,
+                + Info<
+                    MeanOutput = Array1<T>,
+                    RowOutput = Array1<T>,
+                    ColOutput = Array1<T>,
+                    ShapeOutput = Vec<usize>,
+                >,
+            Array<T, Ix1>: Info<
+                MeanOutput = Array<T, Ix0>,
+                RowOutput = T,
+                ColOutput = T,
+                ShapeOutput = Vec<usize>,
+            >,
             for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
         {
             type FitResult = Result<(), LinalgError>;
@@ -115,28 +127,15 @@ macro_rules! impl_ridge_reg {
                 if self.settings.fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
                     let coef = match self.settings.solver {
-                        RidgeRegressionSolver::Sgd => {
-                            let mut rng = ChaCha20Rng::seed_from_u64(
-                                self.settings.random_state.unwrap_or(0).into(),
-                            );
-                            let coef = $randn(x.ncols(), y.shape(), &mut rng);
-                            let (alpha_norm, max_iter, lambda, samples) = sto_algo_entries(
-                                x.nrows(),
-                                self.settings.alpha,
-                                self.settings.max_iter,
-                                &mut rng,
-                            );
-                            sto_algo_output(
-                                $grad,
-                                alpha_norm,
-                                lambda,
-                                samples,
-                                max_iter,
-                                &x_centered,
-                                &y_centered,
-                                coef,
-                            )
-                        }
+                        RidgeRegressionSolver::Sgd => stochastic_algo(
+                            &x_centered,
+                            &y_centered,
+                            self.settings.random_state,
+                            $randn,
+                            self.settings.max_iter,
+                            self.settings.alpha,
+                            $grad,
+                        ),
                         RidgeRegressionSolver::Exact => {
                             let xct = x_centered.t();
                             match (xct.dot(&x_centered)
@@ -153,18 +152,14 @@ macro_rules! impl_ridge_reg {
                 } else {
                     match self.settings.solver {
                         RidgeRegressionSolver::Sgd => {
-                            let mut rng = ChaCha20Rng::seed_from_u64(
-                                self.settings.random_state.unwrap_or(0).into(),
-                            );
-                            let coef = $randn(x.ncols(), y.shape(), &mut rng);
-                            let (alpha_norm, max_iter, lambda, samples) = sto_algo_entries(
-                                x.nrows(),
-                                self.settings.alpha,
+                            self.coef = Some(stochastic_algo(
+                                x,
+                                y,
+                                self.settings.random_state,
+                                $randn,
                                 self.settings.max_iter,
-                                &mut rng,
-                            );
-                            self.coef = Some(sto_algo_output(
-                                $grad, alpha_norm, lambda, samples, max_iter, x, y, coef,
+                                self.settings.alpha,
+                                $grad,
                             ));
                         }
                         RidgeRegressionSolver::Exact => {
@@ -201,6 +196,33 @@ macro_rules! impl_ridge_reg {
 }
 impl_ridge_reg!(Ix1, Ix0, randn_1d, grad_1d);
 impl_ridge_reg!(Ix2, Ix1, randn_2d, grad_2d);
+
+fn stochastic_algo<T, Y, C, R, D, G>(
+    x: &Array2<T>,
+    y: &Y,
+    random_state: Option<u32>,
+    randn: R,
+    max_iter: Option<usize>,
+    alpha: T,
+    grad: G,
+) -> C
+where
+    for<'a> T: Lapack + Mul<&'a C, Output = C> + Mul<C, Output = C>,
+    Y: Info<ShapeOutput = Vec<usize>>,
+    R: Fn(usize, &[usize], &mut ChaCha20Rng) -> C,
+    C: Add<D, Output = C>,
+    Array1<T>: Dot<C>,
+    <Array1<T> as Dot<C>>::Output: Sub<Y::RowOutput>,
+    for<'a> &'a C: Sub<C, Output = C>,
+    for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
+    G: Fn(&Array1<T>, Y::RowOutput, &C) -> D,
+{
+    let mut rng = ChaCha20Rng::seed_from_u64(random_state.unwrap_or(0).into());
+    let coef = randn(x.ncols(), y.shape().as_slice(), &mut rng);
+    let (alpha_norm, max_iter, lambda, samples) =
+        sto_algo_entries(x.nrows(), alpha, max_iter, &mut rng);
+    sto_algo_output(grad, alpha_norm, lambda, samples, max_iter, x, y, coef)
+}
 
 fn sto_algo_entries<T, R>(
     n_rows: usize,

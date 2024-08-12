@@ -2,8 +2,9 @@ mod linear_regression;
 mod ridge_regression;
 mod unit_test;
 use core::ops::{Add, Div, Sub};
-
+extern crate alloc;
 use crate::traits::Info;
+use alloc::vec::Vec;
 pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
 };
@@ -33,6 +34,7 @@ where
     type MeanOutput = Array<T, Ix0>;
     type RowOutput = T;
     type ColOutput = T;
+    type ShapeOutput = Vec<usize>;
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
@@ -41,6 +43,9 @@ where
     }
     fn get_col(&self, i: usize) -> Self::ColOutput {
         self[i]
+    }
+    fn shape(&self) -> Self::ShapeOutput {
+        Array::<T, Ix1>::shape(self).into()
     }
 }
 
@@ -51,6 +56,7 @@ where
     type MeanOutput = Array<T, Ix1>;
     type RowOutput = Array<T, Ix1>;
     type ColOutput = Array<T, Ix1>;
+    type ShapeOutput = Vec<usize>;
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
@@ -59,5 +65,8 @@ where
     }
     fn get_col(&self, i: usize) -> Self::ColOutput {
         self.column(i).to_owned()
+    }
+    fn shape(&self) -> Self::ShapeOutput {
+        Array::<T, Ix2>::shape(self).into()
     }
 }
