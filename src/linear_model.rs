@@ -32,10 +32,14 @@ where
 {
     type MeanOutput = Array<T, Ix0>;
     type RowOutput = T;
+    type ColOutput = T;
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
     fn get_row(&self, i: usize) -> Self::RowOutput {
+        self[i]
+    }
+    fn get_col(&self, i: usize) -> Self::ColOutput {
         self[i]
     }
 }
@@ -46,10 +50,14 @@ where
 {
     type MeanOutput = Array<T, Ix1>;
     type RowOutput = Array<T, Ix1>;
+    type ColOutput = Array<T, Ix1>;
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
     fn get_row(&self, i: usize) -> Self::RowOutput {
         self.row(i).to_owned()
+    }
+    fn get_col(&self, i: usize) -> Self::ColOutput {
+        self.column(i).to_owned()
     }
 }

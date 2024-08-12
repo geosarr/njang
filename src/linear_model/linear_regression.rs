@@ -9,7 +9,7 @@ pub enum LinearRegressionSolver {
     /// Solves the problem using Singular Value Decomposition
     #[default]
     Svd,
-    /// Exact solution of the OLS problem x.t().dot(x).inverse().dot(x.t()).dot(y)
+    /// Exact solution of the OLS problem: x.t().dot(x).inverse().dot(x.t()).dot(y)
     Exact,
     /// Uses QR decomposition to solve the problem
     Qr,
