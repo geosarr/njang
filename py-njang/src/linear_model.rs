@@ -1,62 +1,46 @@
 use ndarray::{Array0, Array1, Array2};
 use njang::{
-    LinearRegression as LinReg, LinearRegressionHyperParameter, LinearRegressionSolver,
-    RegressionModel, RidgeRegression as RidgeReg, RidgeRegressionHyperParameter,
-    RidgeRegressionSolver,
+    LinearRegression as LinReg, LinearRegressionHyperParameter, RegressionModel,
+    RidgeRegression as RidgeReg, RidgeRegressionHyperParameter, RidgeRegressionSolver,
 };
 use numpy::{IntoPyArray, PyArray0, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
 
 #[pyclass]
 pub struct LinearRegression {
-    inner: LinReg<Array1<f64>, Array0<f64>>,
+    reg: RidgeRegression,
 }
 #[pymethods]
 impl LinearRegression {
     #[new]
-    pub fn new(fit_intercept: bool, solver: &str) -> PyResult<Self> {
-        let solver = if solver == "svd" {
-            LinearRegressionSolver::Svd
-        } else if solver == "exact" {
-            LinearRegressionSolver::Exact
-        } else if solver == "qr" {
-            LinearRegressionSolver::Qr
-        } else {
-            return Err(PyValueError::new_err("`{solver}` solver not supported"));
-        };
-        let settings = LinearRegressionHyperParameter {
-            fit_intercept,
-            solver: LinearRegressionSolver::Qr,
-        };
+    pub fn new(
+        fit_intercept: bool,
+        maxiter: Option<usize>,
+        tol: Option<f64>,
+        solver: Option<&str>,
+        random_state: Option<u32>,
+    ) -> PyResult<Self> {
+        // RidgeRegression seems to be faster than plain LinearRegression when penalty is set to 0., why ?
         Ok(Self {
-            inner: LinReg::new(settings),
+            reg: RidgeRegression::new(0., fit_intercept, maxiter, tol, solver, random_state)?,
         })
     }
     pub fn fit(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray1<f64>) -> PyResult<()> {
-        let _ = self
-            .inner
-            .fit(&x.as_array().to_owned(), &y.as_array().to_owned());
-        Ok(())
+        self.reg.fit(x, y)
     }
     #[getter]
     pub fn intercept<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray0<f64>>> {
-        match self.inner.intercept() {
-            Some(value) => Ok(value.clone().into_pyarray_bound(py)),
-            None => Err(PyValueError::new_err("no intercept")),
-        }
+        self.reg.intercept(py)
     }
     #[getter]
     pub fn coef<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        match self.inner.coef() {
-            Some(value) => Ok(value.clone().into_pyarray_bound(py)),
-            None => Err(PyValueError::new_err("no coefficient")),
-        }
+        self.reg.coef(py)
     }
 }
 
 #[pyclass]
 pub struct RidgeRegression {
-    inner: RidgeReg<Array1<f64>, Array0<f64>, f64>,
+    reg: RidgeReg<Array1<f64>, Array0<f64>, f64>,
 }
 #[pymethods]
 impl RidgeRegression {
@@ -75,7 +59,10 @@ impl RidgeRegression {
             } else if solvr == "exact" {
                 RidgeRegressionSolver::Exact
             } else {
-                return Err(PyValueError::new_err("`{solvr}` solver not supported"));
+                return Err(PyValueError::new_err(format!(
+                    "solver `{}` not supported",
+                    solvr
+                )));
             }
         } else {
             RidgeRegressionSolver::Sgd
@@ -86,28 +73,28 @@ impl RidgeRegression {
             solver,
             tol: Some(tol.unwrap_or(0.0001)),
             random_state: Some(random_state.unwrap_or(0)),
-            max_iter: Some(maxiter.unwrap_or(1000)),
+            max_iter: Some(maxiter.unwrap_or(100000)),
         };
         Ok(Self {
-            inner: RidgeReg::new(settings),
+            reg: RidgeReg::new(settings),
         })
     }
     pub fn fit(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray1<f64>) -> PyResult<()> {
         let _ = self
-            .inner
+            .reg
             .fit(&x.as_array().to_owned(), &y.as_array().to_owned());
         Ok(())
     }
     #[getter]
     pub fn intercept<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray0<f64>>> {
-        match self.inner.intercept() {
+        match self.reg.intercept() {
             Some(value) => Ok(value.clone().into_pyarray_bound(py)),
             None => Err(PyValueError::new_err("no intercept")),
         }
     }
     #[getter]
     pub fn coef<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        match self.inner.coef() {
+        match self.reg.coef() {
             Some(value) => Ok(value.clone().into_pyarray_bound(py)),
             None => Err(PyValueError::new_err("no coefficient")),
         }
