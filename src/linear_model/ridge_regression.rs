@@ -3,8 +3,6 @@ use ndarray_rand::rand::Rng;
 
 use crate::RegressionModel;
 use crate::{linear_model::preprocess, traits::Info};
-extern crate alloc;
-use alloc::boxed::Box;
 use core::{
     marker::{Send, Sync},
     ops::{Add, Mul, Sub},
@@ -41,7 +39,6 @@ pub struct RidgeRegressionHyperParameter<T> {
     pub tol: Option<T>,
     pub random_state: Option<u32>,
     pub max_iter: Option<usize>,
-    pub warm_start: Option<Box<Self>>,
 }
 
 impl<T> Default for RidgeRegressionHyperParameter<T>
@@ -56,7 +53,6 @@ where
             tol: Some(T::from_f32(0.0001).unwrap()),
             random_state: Some(0),
             max_iter: Some(1000),
-            warm_start: None,
         }
     }
 }
@@ -69,7 +65,6 @@ impl<T> RidgeRegressionHyperParameter<T> {
             tol: None,
             random_state: None,
             max_iter: None,
-            warm_start: None,
         }
     }
 }
@@ -82,6 +77,31 @@ pub struct RidgeRegression<C, I, T = f32> {
 }
 
 impl<C, I, T> RidgeRegression<C, I, T> {
+    /// Creates a new instance of `Self`.
+    /// If the attribute `warm_start` in [RidgeRegressionHyperParameter] is
+    /// `Some(model: Self)` then, `model` is returned, otherwise, the coefficient and intercept are `None`.
+    /// ```
+    /// use njang::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver, RegressionModel};
+    /// use ndarray::{Array1, Array0, array};
+    /// // Initial model
+    /// let mut model = RidgeRegression::<Array1<f32>, Array0<f32>, f32>::new(
+    ///     RidgeRegressionHyperParameter{
+    ///         alpha: 0.01,
+    ///         tol: Some(0.0001),
+    ///         solver: RidgeRegressionSolver::Sgd,
+    ///         fit_intercept: true,
+    ///         random_state: Some(123),
+    ///         max_iter: Some(1),
+    /// });
+    /// // Dataset
+    /// let x0 = array![[1., 2.], [-3., -4.], [0., 7.], [-2., 5.]];
+    /// let y0 = array![0.5, -1., 2., 3.5];
+    /// model.fit(&x0, &y0);
+    /// // ... once model is fit, it can be trained again from where it stopped.
+    /// let x1 = array![[0., 0.], [-1., -1.], [0.5, -5.], [-1., 3.]];
+    /// let y1 = array![1.5, -1., 0., 1.];
+    /// model.fit_warm_start(&x1, &y1);
+    /// ```
     pub fn new(settings: RidgeRegressionHyperParameter<T>) -> Self {
         Self {
             coef: None,

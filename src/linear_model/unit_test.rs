@@ -151,7 +151,6 @@ mod tests {
                     fit_intercept: intercept.abs() > 0.,
                     random_state: None,
                     max_iter: Some(100000),
-                    warm_start: None,
                 });
             let _ = model.fit(&x, &y);
             let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
@@ -203,7 +202,6 @@ mod tests {
             fit_intercept: intercept.abs() > 0.,
             random_state: None,
             max_iter: Some(100000),
-            warm_start: None,
         });
         let _ = ridge.fit(&x, &y);
         // println!("{:?}", ridge.coef());
