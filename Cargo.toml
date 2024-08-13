@@ -2,11 +2,24 @@
 name = "njang"
 version = "0.1.0"
 edition = "2021"
-
+authors = ["Georges <georgesmbissanes@gmail.com>"]
+license = "MIT"
+description = "Machine learning models"
+readme = false
+repository = "https://github.com/geosarr/njang.git"
+build = false
+keywords = ["algorithm", "machine learning", "optimization"]
+categories = ["algorithms", "no-std"]
 
 [dependencies]
 num-traits = { version = "0.2.19", default-features = false, features = ["libm"] }
-ndarray = {version ="0.15.6"}
+ndarray = { version ="0.15.6" }
 ndarray-linalg = { version = "0.16.0", features = ["openblas-static"] } 
-rand_chacha = "0.3.1"
-ndarray-rand = "0.14.0"
+rand_chacha = { version = "0.3.1" }
+ndarray-rand = { version = "0.14.0" }
+rayon = { version = "1.10.0" }
+
+[features]
+default = ["std"]
+std = []
+rayon = []

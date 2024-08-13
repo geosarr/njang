@@ -7,11 +7,13 @@ mod tests {
     use ndarray::{Array, Array0, Array1, Array2, Ix0, Ix1, Ix2};
 
     // from https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn.linear_model.LinearRegression
+    #[allow(unused)]
     fn predictor() -> Array2<f32> {
         let mut x = Vec::new();
         x.extend_from_slice(&[1f32, 1., 1., 2., 2., 2., 2., 3.]);
         Array2::from_shape_vec((4, 2), x).unwrap()
     }
+    #[allow(unused)]
     fn one_reg_dataset(intercept: f32) -> (Array2<f32>, Array1<f32>, Array1<f32>) {
         let x = predictor();
         let coef = Array1::from_iter([1., 2.]);
@@ -19,6 +21,7 @@ mod tests {
         let y = x.dot(&coef) + intercept;
         (x, y, coef)
     }
+    #[allow(unused)]
     fn multi_reg_dataset(intercept: f32) -> (Array2<f32>, Array2<f32>, Array2<f32>) {
         let x = predictor();
         let mut coef = Vec::new();
@@ -59,6 +62,7 @@ mod tests {
     impl_assert_reg!(assert_one_reg, l2_diff, Ix1, Ix0);
     impl_assert_reg!(assert_multi_reg, l2_diff2, Ix2, Ix1);
 
+    #[allow(unused)]
     fn lin_one_reg(intercept: f32, tol: f32) {
         let (x, y, coef) = one_reg_dataset(intercept);
         let solvers = [
@@ -95,6 +99,7 @@ mod tests {
         lin_one_reg(0., 2e-5)
     }
 
+    #[allow(unused)]
     fn lin_multi_reg(intercept: f32, tol: f32) {
         let (x, y, coef) = multi_reg_dataset(intercept);
         let solvers = [
@@ -132,6 +137,7 @@ mod tests {
         lin_multi_reg(0., 6e-5)
     }
 
+    #[allow(unused)]
     fn ridge_one_reg(intercept: f32, tol: f32) {
         let (x, y, coef) = one_reg_dataset(intercept);
         let solvers = [RidgeRegressionSolver::Exact, RidgeRegressionSolver::Sgd];
@@ -145,6 +151,7 @@ mod tests {
                     fit_intercept: intercept.abs() > 0.,
                     random_state: None,
                     max_iter: Some(100000),
+                    warm_start: None,
                 });
             let _ = model.fit(&x, &y);
             let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
@@ -196,6 +203,7 @@ mod tests {
             fit_intercept: intercept.abs() > 0.,
             random_state: None,
             max_iter: Some(100000),
+            warm_start: None,
         });
         let _ = ridge.fit(&x, &y);
         // println!("{:?}", ridge.coef());

@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
 };
-use ndarray::{Array, Axis, Ix0, Ix1, Ix2};
+use ndarray::{Array, Array1, Axis, Ix0, Ix1, Ix2};
 use num_traits::{FromPrimitive, Zero};
 pub use ridge_regression::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver};
 
@@ -35,6 +35,9 @@ where
     type RowOutput = T;
     type ColOutput = T;
     type ShapeOutput = Vec<usize>;
+    type ColMut = ();
+    type NcolsOutput = ();
+    type NrowsOutput = ();
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
@@ -47,6 +50,9 @@ where
     fn shape(&self) -> Self::ShapeOutput {
         Array::<T, Ix1>::shape(self).into()
     }
+    fn col_mut(&mut self, idx: usize, elem: ()) {}
+    fn get_ncols(&self) {}
+    fn get_nrows(&self) {}
 }
 
 impl<T> Info for Array<T, Ix2>
@@ -57,6 +63,9 @@ where
     type RowOutput = Array<T, Ix1>;
     type ColOutput = Array<T, Ix1>;
     type ShapeOutput = Vec<usize>;
+    type ColMut = Array1<T>;
+    type NcolsOutput = usize;
+    type NrowsOutput = usize;
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
@@ -68,5 +77,14 @@ where
     }
     fn shape(&self) -> Self::ShapeOutput {
         Array::<T, Ix2>::shape(self).into()
+    }
+    fn col_mut(&mut self, idx: usize, elem: Self::ColMut) {
+        self.column_mut(idx).assign(&elem);
+    }
+    fn get_ncols(&self) -> Self::NcolsOutput {
+        self.ncols()
+    }
+    fn get_nrows(&self) -> Self::NrowsOutput {
+        self.nrows()
     }
 }

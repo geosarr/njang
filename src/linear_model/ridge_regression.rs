@@ -1,17 +1,20 @@
-use ndarray::{linalg::Dot, Array, Array1, Array2, Axis, Ix0, Ix1, Ix2, ScalarOperand};
+use ndarray::{linalg::Dot, Array, Array1, Array2, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_rand::rand::Rng;
 
 use crate::RegressionModel;
 use crate::{linear_model::preprocess, traits::Info};
-use core::ops::{Add, Mul, Sub};
+extern crate alloc;
+use alloc::boxed::Box;
+use core::{
+    marker::{Send, Sync},
+    ops::{Add, Mul, Sub},
+};
 use ndarray_linalg::{error::LinalgError, Inverse, Lapack, QR};
 use ndarray_rand::{
     rand::{distributions::Distribution, SeedableRng},
     rand_distr::{StandardNormal, Uniform},
     RandomExt,
 };
-extern crate alloc;
-use alloc::vec::Vec;
 use num_traits::FromPrimitive;
 use rand_chacha::ChaCha20Rng;
 
@@ -38,6 +41,7 @@ pub struct RidgeRegressionHyperParameter<T> {
     pub tol: Option<T>,
     pub random_state: Option<u32>,
     pub max_iter: Option<usize>,
+    pub warm_start: Option<Box<Self>>,
 }
 
 impl<T> Default for RidgeRegressionHyperParameter<T>
@@ -52,6 +56,7 @@ where
             tol: Some(T::from_f32(0.0001).unwrap()),
             random_state: Some(0),
             max_iter: Some(1000),
+            warm_start: None,
         }
     }
 }
@@ -64,6 +69,7 @@ impl<T> RidgeRegressionHyperParameter<T> {
             tol: None,
             random_state: None,
             max_iter: None,
+            warm_start: None,
         }
     }
 }
@@ -110,10 +116,10 @@ macro_rules! impl_ridge_reg {
                 let (n_samples, n_features) = (x.nrows(), x.ncols());
                 let coef = $randn(n_features, y.shape(), &mut rng);
                 let max_iter = self.settings.max_iter.unwrap_or(1000);
-                let nf = T::from_f32(n_samples as f32).unwrap();
+                let nf = T::from_f32(n_samples as f32).unwrap(); // critical when number of samples > int(f3::MAX) ?
                 let lambda = T::from_f32(0.001).unwrap(); // to determine automatically.
                 let samples = Array::<usize, _>::random_using(
-                    self.settings.max_iter.unwrap_or(1000),
+                    max_iter,
                     Uniform::from(0..n_samples),
                     &mut rng,
                 );
@@ -123,10 +129,8 @@ macro_rules! impl_ridge_reg {
         }
         impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T>
         where
-            for<'a> T: Lapack
+            T: Lapack
                 + ScalarOperand
-                + FromPrimitive
-                + Mul<&'a Array<T, $ix>, Output = Array<T, $ix>>
                 + Mul<Array1<T>, Output = Array1<T>>
                 + Mul<Array2<T>, Output = Array2<T>>,
             StandardNormal: Distribution<T>,
@@ -138,14 +142,10 @@ macro_rules! impl_ridge_reg {
                     MeanOutput = Array1<T>,
                     RowOutput = Array1<T>,
                     ColOutput = Array1<T>,
-                    ShapeOutput = Vec<usize>,
+                    ColMut = Array1<T>,
+                    NcolsOutput = usize,
                 >,
-            Array<T, Ix1>: Info<
-                MeanOutput = Array<T, Ix0>,
-                RowOutput = T,
-                ColOutput = T,
-                ShapeOutput = Vec<usize>,
-            >,
+            Array<T, Ix1>: Info<MeanOutput = Array<T, Ix0>, RowOutput = T>,
             for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
         {
             type FitResult = Result<(), LinalgError>;
@@ -164,7 +164,7 @@ macro_rules! impl_ridge_reg {
                                 &y_centered,
                                 coef,
                                 max_iter,
-                                samples,
+                                &samples,
                                 alpha_norm,
                                 lambda,
                             )
@@ -202,7 +202,7 @@ macro_rules! impl_ridge_reg {
                             let (alpha_norm, max_iter, lambda, samples, coef) =
                                 self.init_stochastic_algo(x, y);
                             self.coef =
-                                Some($grad(x, y, coef, max_iter, samples, alpha_norm, lambda));
+                                Some($grad(x, y, coef, max_iter, &samples, alpha_norm, lambda));
                         }
                         RidgeRegressionSolver::Exact => {
                             let xt = x.t();
@@ -249,22 +249,21 @@ macro_rules! impl_ridge_reg {
 impl_ridge_reg!(Ix1, Ix0, randn_1d, grad_1d);
 impl_ridge_reg!(Ix2, Ix1, randn_2d, grad_2d);
 
-fn grad_1d<T>(
-    x: &Array2<T>,
-    y: &Array1<T>,
-    mut coef: Array1<T>,
+fn grad_1d<T, X, Y>(
+    x: &X,
+    y: &Y,
+    mut coef: Y,
     max_iter: usize,
-    samples: Array1<usize>,
+    samples: &Array1<usize>,
     alpha_norm: T,
     lambda: T,
-) -> Array1<T>
+) -> Y
 where
-    Array1<T>:
-        Info<RowOutput = T> + Dot<Array1<T>, Output = T> + Add<Array1<T>, Output = Array1<T>>,
-    for<'a> &'a Array1<T>: Sub<Array1<T>, Output = Array1<T>>,
-    Array2<T>: Info<RowOutput = Array1<T>>,
+    Y: Info<RowOutput = T> + Dot<Y, Output = T> + Add<Y, Output = Y>,
+    for<'a> &'a Y: Sub<Y, Output = Y>,
+    X: Info<RowOutput = Y>,
     T: Sub<T, Output = T> + Copy,
-    for<'a> T: Mul<Array1<T>, Output = Array1<T>> + Mul<&'a Array1<T>, Output = Array1<T>>,
+    for<'a> T: Mul<Y, Output = Y> + Mul<&'a Y, Output = Y>,
 {
     for k in 0..max_iter {
         let i = samples[k];
@@ -276,31 +275,73 @@ where
     coef
 }
 
-fn grad_2d<T>(
+fn grad_2d<T, X, Xsmaller>(
+    x: &X,
+    y: &X,
+    mut coef: X,
+    max_iter: usize,
+    samples: &Array1<usize>,
+    alpha_norm: T,
+    lambda: T,
+) -> X
+where
+    Xsmaller: Info<RowOutput = T> + Dot<Xsmaller, Output = T> + Add<Xsmaller, Output = Xsmaller>,
+    for<'a> &'a Xsmaller: Sub<Xsmaller, Output = Xsmaller>,
+    X: Info<RowOutput = Xsmaller, ColOutput = Xsmaller, NcolsOutput = usize, ColMut = Xsmaller>,
+    T: Sub<T, Output = T> + Copy,
+    for<'a> T: Mul<Xsmaller, Output = Xsmaller> + Mul<&'a Xsmaller, Output = Xsmaller>,
+{
+    let nb_reg = coef.get_ncols();
+    (0..nb_reg)
+        .into_iter()
+        .map(|r| {
+            let coefr = coef.get_col(r);
+            let yr = y.get_col(r);
+            coef.col_mut(
+                r,
+                grad_1d(x, &yr, coefr, max_iter, &samples, alpha_norm, lambda),
+            );
+        })
+        .for_each(drop);
+    coef
+}
+
+#[cfg(feature = "std")]
+#[cfg(feature = "rayon")]
+fn par_grad_2d<T>(
     x: &Array2<T>,
     y: &Array2<T>,
     mut coef: Array2<T>,
     max_iter: usize,
-    samples: Array1<usize>,
+    samples: &Array1<usize>,
     alpha_norm: T,
     lambda: T,
 ) -> Array2<T>
 where
-    Array1<T>: Dot<Array2<T>, Output = Array1<T>> + Mul<Array2<T>, Output = Array2<T>>,
+    Array1<T>:
+        Info<RowOutput = T> + Dot<Array1<T>, Output = T> + Add<Array1<T>, Output = Array1<T>>,
+    for<'a> &'a Array1<T>: Sub<Array1<T>, Output = Array1<T>>,
     Array2<T>: Info<RowOutput = Array1<T>>,
-    T: Sub<T, Output = T> + Clone + num_traits::Zero + Copy,
-    for<'a> T: Mul<Array2<T>, Output = Array2<T>> + Mul<&'a Array2<T>, Output = Array2<T>>,
+    T: Sub<T, Output = T> + Copy + Send + Sync,
+    for<'a> T: Mul<Array1<T>, Output = Array1<T>> + Mul<&'a Array1<T>, Output = Array1<T>>,
 {
-    for k in 0..max_iter {
-        let i = samples[k];
-        let xi = x.get_row(i);
-        let yi = y.get_row(i);
-        let indices = (0..y.ncols()).map(|_| i).collect::<Vec<usize>>();
-        let mat_xi = x.select(Axis(0), &indices).t().to_owned();
-        let g_cost = alpha_norm * &coef + (xi.dot(&coef) - yi) * mat_xi;
-        coef = &coef - lambda * g_cost;
-    }
-    coef
+    use rayon::prelude::*;
+    use std::sync::Mutex;
+    let nb_reg = coef.ncols();
+    let coef = Mutex::new(coef);
+    let y = Mutex::new(y);
+    (0..nb_reg)
+        .into_par_iter()
+        .map(|r| {
+            let coefr = coef.lock().unwrap().column(r).to_owned();
+            let yr = y.lock().unwrap().column(r).to_owned();
+            coef.lock().unwrap().column_mut(r).assign(&grad_1d(
+                x, &yr, coefr, max_iter, &samples, alpha_norm, lambda,
+            ));
+        })
+        .for_each(drop);
+    let coef = coef.lock().unwrap();
+    coef.clone()
 }
 
 fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>
