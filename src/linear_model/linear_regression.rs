@@ -1,18 +1,18 @@
 use ndarray::{linalg::Dot, Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
 
 use crate::{linear_model::preprocess, traits::Info, RegressionModel};
+use core::ops::Mul;
 use ndarray_linalg::{error::LinalgError, Inverse, Lapack, LeastSquaresSvd, QR};
-
 /// Solver to use when fitting a linear regression model (Ordinary Least Squares, OLS).
 #[derive(Debug, Default)]
 pub enum LinearRegressionSolver {
     /// Solves the problem using Singular Value Decomposition
     #[default]
-    Svd,
-    /// Exact solution of the OLS problem: x.t().dot(x).inverse().dot(x.t()).dot(y)
-    Exact,
+    SVD,
+    /// Computes the exact solution: x.t().dot(x).inverse().dot(x.t()).dot(y)
+    EXACT,
     /// Uses QR decomposition to solve the problem
-    Qr,
+    QR,
 }
 
 /// Hyperparameters used in a linear regression model
@@ -72,17 +72,17 @@ macro_rules! impl_lin_reg {
                 if self.settings.fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
                     let coef = match self.settings.solver {
-                        LinearRegressionSolver::Svd => {
+                        LinearRegressionSolver::SVD => {
                             x_centered.least_squares(&y_centered)?.solution
                         }
-                        LinearRegressionSolver::Exact => {
+                        LinearRegressionSolver::EXACT => {
                             let xct = x_centered.t();
                             match xct.dot(&x_centered).inv() {
                                 Ok(mat) => mat.dot(&xct).dot(&y_centered),
                                 Err(error) => return Err(error),
                             }
                         }
-                        LinearRegressionSolver::Qr => {
+                        LinearRegressionSolver::QR => {
                             let (q, r) = match x_centered.qr() {
                                 Ok((q, r)) => (q, r),
                                 Err(error) => return Err(error),
@@ -97,18 +97,18 @@ macro_rules! impl_lin_reg {
                     self.coef = Some(coef);
                 } else {
                     match self.settings.solver {
-                        LinearRegressionSolver::Svd => {
+                        LinearRegressionSolver::SVD => {
                             let res = x.least_squares(&y)?;
                             self.coef = Some(res.solution);
                         }
-                        LinearRegressionSolver::Exact => {
+                        LinearRegressionSolver::EXACT => {
                             let xt = x.t();
                             self.coef = Some(match xt.dot(x).inv() {
                                 Ok(mat) => mat.dot(&xt).dot(y),
                                 Err(error) => return Err(error),
                             });
                         }
-                        LinearRegressionSolver::Qr => {
+                        LinearRegressionSolver::QR => {
                             let (q, r) = match x.qr() {
                                 Ok((q, r)) => (q, r),
                                 Err(error) => return Err(error),

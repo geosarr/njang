@@ -66,9 +66,9 @@ mod tests {
     fn lin_one_reg(intercept: f32, tol: f32) {
         let (x, y, coef) = one_reg_dataset(intercept);
         let solvers = [
-            LinearRegressionSolver::Svd,
-            LinearRegressionSolver::Qr,
-            LinearRegressionSolver::Exact,
+            LinearRegressionSolver::SVD,
+            LinearRegressionSolver::QR,
+            LinearRegressionSolver::EXACT,
         ];
         for solver in solvers {
             let mut model =
@@ -103,9 +103,9 @@ mod tests {
     fn lin_multi_reg(intercept: f32, tol: f32) {
         let (x, y, coef) = multi_reg_dataset(intercept);
         let solvers = [
-            LinearRegressionSolver::Svd,
-            LinearRegressionSolver::Qr,
-            LinearRegressionSolver::Exact,
+            LinearRegressionSolver::SVD,
+            LinearRegressionSolver::QR,
+            LinearRegressionSolver::EXACT,
         ];
         for solver in solvers {
             let mut model =
@@ -140,17 +140,18 @@ mod tests {
     #[allow(unused)]
     fn ridge_one_reg(intercept: f32, tol: f32) {
         let (x, y, coef) = one_reg_dataset(intercept);
-        let solvers = [RidgeRegressionSolver::Exact, RidgeRegressionSolver::Sgd];
+        let solvers = [RidgeRegressionSolver::EXACT, RidgeRegressionSolver::SGD];
         for solver in solvers {
             let mut model =
                 RidgeRegression::<Array1<_>, Array0<_>>::new(RidgeRegressionHyperParameter {
-                    // Some attributes are not needed for Exact solver
+                    // Some attributes are not needed for EXACT solver
                     alpha: 0.,
                     tol: Some(0.01),
                     solver: solver,
                     fit_intercept: intercept.abs() > 0.,
                     random_state: None,
                     max_iter: Some(100000),
+                    warm_start: false,
                 });
             let _ = model.fit(&x, &y);
             let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
@@ -195,13 +196,14 @@ mod tests {
             fitted_intercept,
         );
         let mut ridge = RidgeRegression::<Array2<_>, _>::new(RidgeRegressionHyperParameter {
-            // Some attributes are not needed for Exact solver
+            // Some attributes are not needed for EXACT solver
             alpha: 0.,
             tol: Some(0.01),
-            solver: RidgeRegressionSolver::Sgd,
+            solver: RidgeRegressionSolver::SGD,
             fit_intercept: intercept.abs() > 0.,
             random_state: None,
             max_iter: Some(100000),
+            warm_start: false,
         });
         let _ = ridge.fit(&x, &y);
         // println!("{:?}", ridge.coef());

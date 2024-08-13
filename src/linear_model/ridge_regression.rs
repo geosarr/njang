@@ -23,14 +23,23 @@ pub enum RidgeRegressionSolver {
     ///
     /// Make sure to standardize the input predictors, otherwise the algorithm may not converge.
     #[default]
-    Sgd,
-    /// Computing the exaction solution (x.t().dot(x) + alpha * eye).inverse().dot(x.t()).dot(y)
-    Exact,
+    SGD,
+    /// Computes the solution: (x.t().dot(x) + alpha * eye).inverse().dot(x.t().dot(y))
+    EXACT,
     /// Uses QR decomposition of the matrix x.t().dot(x) + alpha * eye to solve the problem
-    Qr,
+    /// (x.t().dot(x) + alpha * eye) * coef = x.t().dot(y) with respect to coef
+    QR,
 }
 
 /// Hyperparameters used in a Ridge regression.
+///
+/// - **alpha**: L2-norm penalty magnitude.
+/// - **fit_intercept**: `true` means fit with an intercept, `false` without an intercept.
+/// - **solver**: optimization method see [`RidgeRegressionSolver`].
+/// - **tol**: tolerance parameter.
+/// - **random_state**: seed of random generators.
+/// - **max_iter**: maximum number of iterations.
+/// - **warm_start**: whether or not warm starting is allowed.
 #[derive(Debug)]
 pub struct RidgeRegressionHyperParameter<T> {
     pub alpha: T,
@@ -39,6 +48,7 @@ pub struct RidgeRegressionHyperParameter<T> {
     pub tol: Option<T>,
     pub random_state: Option<u32>,
     pub max_iter: Option<usize>,
+    pub warm_start: bool,
 }
 
 impl<T> Default for RidgeRegressionHyperParameter<T>
@@ -53,6 +63,7 @@ where
             tol: Some(T::from_f32(0.0001).unwrap()),
             random_state: Some(0),
             max_iter: Some(1000),
+            warm_start: true,
         }
     }
 }
@@ -61,10 +72,11 @@ impl<T> RidgeRegressionHyperParameter<T> {
         Self {
             alpha,
             fit_intercept,
-            solver: RidgeRegressionSolver::Exact,
+            solver: RidgeRegressionSolver::EXACT,
             tol: None,
             random_state: None,
             max_iter: None,
+            warm_start: false,
         }
     }
 }
@@ -78,8 +90,8 @@ pub struct RidgeRegression<C, I, T = f32> {
 
 impl<C, I, T> RidgeRegression<C, I, T> {
     /// Creates a new instance of `Self`.
-    /// If the attribute `warm_start` in [RidgeRegressionHyperParameter] is
-    /// `Some(model: Self)` then, `model` is returned, otherwise, the coefficient and intercept are `None`.
+    ///
+    /// See also: [RidgeRegressionHyperParameter], [RidgeRegressionSolver], [RegressionModel].
     /// ```
     /// use njang::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver, RegressionModel};
     /// use ndarray::{Array1, Array0, array};
@@ -88,10 +100,11 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     ///     RidgeRegressionHyperParameter{
     ///         alpha: 0.01,
     ///         tol: Some(0.0001),
-    ///         solver: RidgeRegressionSolver::Sgd,
+    ///         solver: RidgeRegressionSolver::SGD,
     ///         fit_intercept: true,
     ///         random_state: Some(123),
     ///         max_iter: Some(1),
+    ///         warm_start: true,
     /// });
     /// // Dataset
     /// let x0 = array![[1., 2.], [-3., -4.], [0., 7.], [-2., 5.]];
@@ -100,7 +113,7 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     /// // ... once model is fit, it can be trained again from where it stopped.
     /// let x1 = array![[0., 0.], [-1., -1.], [0.5, -5.], [-1., 3.]];
     /// let y1 = array![1.5, -1., 0., 1.];
-    /// model.fit_warm_start(&x1, &y1);
+    /// model.fit(&x1, &y1);
     /// ```
     pub fn new(settings: RidgeRegressionHyperParameter<T>) -> Self {
         Self {
@@ -128,13 +141,22 @@ macro_rules! impl_ridge_reg {
                 y: &Array<T, $ix>,
             ) -> (T, usize, T, Array1<usize>, Array<T, $ix>)
             where
-                T: Lapack,
+                T: Lapack + Clone,
                 StandardNormal: Distribution<T>,
             {
                 let mut rng =
                     ChaCha20Rng::seed_from_u64(self.settings.random_state.unwrap_or(0).into());
                 let (n_samples, n_features) = (x.nrows(), x.ncols());
-                let coef = $randn(n_features, y.shape(), &mut rng);
+                let coef = if let Some(coef) = &self.coef {
+                    // warm start is activated
+                    if self.settings.warm_start {
+                        coef.clone()
+                    } else {
+                        $randn(n_features, y.shape(), &mut rng)
+                    }
+                } else {
+                    $randn(n_features, y.shape(), &mut rng)
+                };
                 let max_iter = self.settings.max_iter.unwrap_or(1000);
                 let nf = T::from_f32(n_samples as f32).unwrap(); // critical when number of samples > int(f3::MAX) ?
                 let lambda = T::from_f32(0.001).unwrap(); // to determine automatically.
@@ -176,7 +198,7 @@ macro_rules! impl_ridge_reg {
                 if self.settings.fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
                     let coef = match self.settings.solver {
-                        RidgeRegressionSolver::Sgd => {
+                        RidgeRegressionSolver::SGD => {
                             let (alpha_norm, max_iter, lambda, samples, coef) =
                                 self.init_stochastic_algo(x, y);
                             $grad(
@@ -189,7 +211,7 @@ macro_rules! impl_ridge_reg {
                                 lambda,
                             )
                         }
-                        RidgeRegressionSolver::Exact => {
+                        RidgeRegressionSolver::EXACT => {
                             let xct = x_centered.t();
                             match (xct.dot(&x_centered)
                                 + self.settings.alpha * Array2::eye(x.ncols()))
@@ -199,7 +221,7 @@ macro_rules! impl_ridge_reg {
                                 Err(error) => return Err(error),
                             }
                         }
-                        RidgeRegressionSolver::Qr => {
+                        RidgeRegressionSolver::QR => {
                             let xct = x_centered.t();
                             let (q, r) = match (xct.dot(&x_centered)
                                 + self.settings.alpha * Array2::eye(x.ncols()))
@@ -218,13 +240,13 @@ macro_rules! impl_ridge_reg {
                     self.coef = Some(coef);
                 } else {
                     match self.settings.solver {
-                        RidgeRegressionSolver::Sgd => {
+                        RidgeRegressionSolver::SGD => {
                             let (alpha_norm, max_iter, lambda, samples, coef) =
                                 self.init_stochastic_algo(x, y);
                             self.coef =
                                 Some($grad(x, y, coef, max_iter, &samples, alpha_norm, lambda));
                         }
-                        RidgeRegressionSolver::Exact => {
+                        RidgeRegressionSolver::EXACT => {
                             let xt = x.t();
                             self.coef = Some(
                                 match (xt.dot(x) + self.settings.alpha * Array2::eye(x.ncols()))
@@ -235,7 +257,7 @@ macro_rules! impl_ridge_reg {
                                 },
                             );
                         }
-                        RidgeRegressionSolver::Qr => {
+                        RidgeRegressionSolver::QR => {
                             let (q, r) = match x.qr() {
                                 Ok((q, r)) => (q, r),
                                 Err(error) => return Err(error),

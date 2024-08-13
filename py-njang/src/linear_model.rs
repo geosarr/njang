@@ -21,10 +21,19 @@ impl LinearRegression {
         tol: Option<f64>,
         solver: Option<&str>,
         random_state: Option<u32>,
+        warm_start: Option<bool>,
     ) -> PyResult<Self> {
         // RidgeRegression seems to be faster than plain LinearRegression when penalty is set to 0., why ?
         Ok(Self {
-            reg: RidgeRegression1d::new(0., fit_intercept, max_iter, tol, solver, random_state)?,
+            reg: RidgeRegression1d::new(
+                0.,
+                fit_intercept,
+                max_iter,
+                tol,
+                solver,
+                random_state,
+                warm_start,
+            )?,
         })
     }
     pub fn fit(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray1<f64>) -> PyResult<()> {
@@ -58,6 +67,7 @@ impl RidgeRegression {
         tol: Option<f64>,
         solver: Option<&str>,
         random_state: Option<u32>,
+        warm_start: Option<bool>,
     ) -> PyResult<Self> {
         Ok(Self {
             reg_1d: RidgeRegression1d::new(
@@ -67,6 +77,7 @@ impl RidgeRegression {
                 tol,
                 solver,
                 random_state,
+                warm_start,
             )?,
             reg_2d: RidgeRegression2d::new(
                 alpha,
@@ -75,6 +86,7 @@ impl RidgeRegression {
                 tol,
                 solver,
                 random_state,
+                warm_start,
             )?,
             fitted_1d: false,
             fitted_2d: false,
@@ -142,14 +154,15 @@ macro_rules! impl_ridge_reg {
                 tol: Option<f64>,
                 solver: Option<&str>,
                 random_state: Option<u32>,
+                warm_start: Option<bool>,
             ) -> PyResult<Self> {
                 let solver = if let Some(solvr) = solver {
                     if solvr == "sgd" {
-                        RidgeRegressionSolver::Sgd
-                    } else if solvr == "exact" {
-                        RidgeRegressionSolver::Exact
+                        RidgeRegressionSolver::SGD
+                    } else if solvr == "ols" {
+                        RidgeRegressionSolver::EXACT
                     } else if solvr == "qr" {
-                        RidgeRegressionSolver::Qr
+                        RidgeRegressionSolver::QR
                     } else {
                         return Err(PyValueError::new_err(format!(
                             "solver `{}` not supported",
@@ -157,7 +170,7 @@ macro_rules! impl_ridge_reg {
                         )));
                     }
                 } else {
-                    RidgeRegressionSolver::Sgd
+                    RidgeRegressionSolver::SGD
                 };
                 let settings = RidgeRegressionHyperParameter {
                     alpha,
@@ -166,6 +179,7 @@ macro_rules! impl_ridge_reg {
                     tol: Some(tol.unwrap_or(0.0001)),
                     random_state: Some(random_state.unwrap_or(0)),
                     max_iter: Some(max_iter.unwrap_or(100000)),
+                    warm_start: warm_start.unwrap_or(false),
                 };
                 Ok(Self {
                     reg: RidgeReg::new(settings),

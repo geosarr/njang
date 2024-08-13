@@ -28,7 +28,7 @@ fn fit_lin_reg_exact_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
         fit_intercept: false,
-        solver: LinearRegressionSolver::Exact,
+        solver: LinearRegressionSolver::EXACT,
     });
     bench.iter(|| {
         let _solution = lin_reg.fit(&x, &y);
@@ -40,7 +40,7 @@ fn fit_lin_reg_svd_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
         fit_intercept: false,
-        solver: LinearRegressionSolver::Svd,
+        solver: LinearRegressionSolver::SVD,
     });
     bench.iter(|| {
         let _solution = lin_reg.fit(&x, &y);
@@ -52,7 +52,7 @@ fn fit_lin_reg_qr_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
         fit_intercept: false,
-        solver: LinearRegressionSolver::Qr,
+        solver: LinearRegressionSolver::QR,
     });
     bench.iter(|| {
         let _solution = lin_reg.fit(&x, &y);
