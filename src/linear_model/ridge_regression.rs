@@ -1,6 +1,6 @@
 use ndarray::{linalg::Dot, Array, Array1, Array2, Ix0, Ix1, Ix2, ScalarOperand};
-use ndarray_rand::rand::Rng;
 
+use crate::linear_model::{randn_1d, randn_2d};
 use crate::RegressionModel;
 use crate::{linear_model::preprocess, traits::Info};
 use core::{
@@ -291,6 +291,22 @@ macro_rules! impl_ridge_reg {
 impl_ridge_reg!(Ix1, Ix0, randn_1d, grad_1d);
 impl_ridge_reg!(Ix2, Ix1, randn_2d, grad_2d);
 
+struct RidgeSgdUpdate<'a, T, X> {
+    pub lambda: T,
+    pub alpha: T,
+    pub x: X,
+    pub y: T,
+    pub c: &'a X,
+}
+impl<'a, T, X> RidgeSgdUpdate<'a, T, X> {
+    pub fn compute(self) -> X
+    where
+        T: Mul<&'a X, Output = X> + Mul<X, Output = X> + Sub<T, Output = T>,
+        X: Dot<X, Output = T> + Add<X, Output = X>,
+    {
+        self.lambda * (self.alpha * self.c + (self.x.dot(self.c) - self.y) * self.x)
+    }
+}
 fn grad_1d<T, X, Y>(
     x: &X,
     y: &Y,
@@ -309,10 +325,15 @@ where
 {
     for k in 0..max_iter {
         let i = samples[k];
-        let xi = x.get_row(i);
-        let yi = y.get_row(i);
-        let g_cost = alpha_norm * &coef + (xi.dot(&coef) - yi) * xi;
-        coef = &coef - lambda * g_cost;
+        let update = RidgeSgdUpdate {
+            lambda,
+            x: x.get_row(i),
+            alpha: alpha_norm,
+            y: y.get_row(i),
+            c: &coef,
+        }
+        .compute();
+        coef = &coef - update;
     }
     coef
 }
@@ -335,13 +356,12 @@ where
 {
     let nb_reg = coef.get_ncols();
     (0..nb_reg)
-        .into_iter()
         .map(|r| {
             let coefr = coef.get_col(r);
             let yr = y.get_col(r);
             coef.col_mut(
                 r,
-                grad_1d(x, &yr, coefr, max_iter, &samples, alpha_norm, lambda),
+                grad_1d(x, &yr, coefr, max_iter, samples, alpha_norm, lambda),
             );
         })
         .for_each(drop);
@@ -384,18 +404,4 @@ where
         .for_each(drop);
     let coef = coef.lock().unwrap();
     coef.clone()
-}
-
-fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>
-where
-    StandardNormal: Distribution<T>,
-{
-    Array::<T, Ix1>::random_using(n, StandardNormal, rng)
-}
-
-fn randn_2d<T, R: Rng>(n: usize, m: &[usize], rng: &mut R) -> Array<T, Ix2>
-where
-    StandardNormal: Distribution<T>,
-{
-    Array::<T, Ix2>::random_using((n, m[1]), StandardNormal, rng)
 }

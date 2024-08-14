@@ -147,7 +147,7 @@ mod tests {
                     // Some attributes are not needed for EXACT solver
                     alpha: 0.,
                     tol: Some(0.01),
-                    solver: solver,
+                    solver,
                     fit_intercept: intercept.abs() > 0.,
                     random_state: None,
                     max_iter: Some(100000),

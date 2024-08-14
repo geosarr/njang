@@ -9,6 +9,11 @@ pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
 };
 use ndarray::{Array, Array1, Axis, Ix0, Ix1, Ix2};
+use ndarray_rand::{
+    rand::{distributions::Distribution, Rng},
+    rand_distr::StandardNormal,
+    RandomExt,
+};
 use num_traits::{FromPrimitive, Zero};
 pub use ridge_regression::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver};
 
@@ -25,6 +30,20 @@ where
     let x_centered = x - &x_mean;
     let y_centered = y - &y_mean;
     (x_centered, x_mean, y_centered, y_mean)
+}
+
+pub(crate) fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>
+where
+    StandardNormal: Distribution<T>,
+{
+    Array::<T, Ix1>::random_using(n, StandardNormal, rng)
+}
+
+pub(crate) fn randn_2d<T, R: Rng>(n: usize, m: &[usize], rng: &mut R) -> Array<T, Ix2>
+where
+    StandardNormal: Distribution<T>,
+{
+    Array::<T, Ix2>::random_using((n, m[1]), StandardNormal, rng)
 }
 
 impl<T> Info for Array<T, Ix1>
@@ -50,7 +69,7 @@ where
     fn shape(&self) -> Self::ShapeOutput {
         Array::<T, Ix1>::shape(self).into()
     }
-    fn col_mut(&mut self, idx: usize, elem: ()) {}
+    fn col_mut(&mut self, _idx: usize, _elem: ()) {}
     fn get_ncols(&self) {}
     fn get_nrows(&self) {}
 }

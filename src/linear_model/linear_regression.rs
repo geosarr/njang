@@ -1,7 +1,6 @@
 use ndarray::{linalg::Dot, Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
 
 use crate::{linear_model::preprocess, traits::Info, RegressionModel};
-use core::ops::Mul;
 use ndarray_linalg::{error::LinalgError, Inverse, Lapack, LeastSquaresSvd, QR};
 /// Solver to use when fitting a linear regression model (Ordinary Least Squares, OLS).
 #[derive(Debug, Default)]
