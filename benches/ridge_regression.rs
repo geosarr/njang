@@ -37,7 +37,7 @@ fn fit_ridge_reg_exact_bench(bench: &mut Bencher) {
 }
 
 #[bench]
-fn fit_ridge_reg_svd_bench(bench: &mut Bencher) {
+fn fit_ridge_reg_sgd_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut ridge_reg = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionHyperParameter {
         fit_intercept: false,

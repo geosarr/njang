@@ -48,6 +48,7 @@ mod tests {
             ) where
                 M: RegressionModel<X = Array2<f32>, PredictResult = Option<Array<f32, $ix>>>,
             {
+                // println!("{:?}", $l2_norm(fitted_coef, true_coef));
                 assert!($l2_norm(fitted_coef, true_coef) < tol);
                 if let Some(true_inter) = true_intercept {
                     if let Some(fitted_inter) = fitted_intercept {
@@ -146,7 +147,7 @@ mod tests {
                 RidgeRegression::<Array1<_>, Array0<_>>::new(RidgeRegressionHyperParameter {
                     // Some attributes are not needed for EXACT solver
                     alpha: 0.,
-                    tol: Some(0.01),
+                    tol: Some(1e-10),
                     solver,
                     fit_intercept: intercept.abs() > 0.,
                     random_state: None,
@@ -198,7 +199,7 @@ mod tests {
         let mut ridge = RidgeRegression::<Array2<_>, _>::new(RidgeRegressionHyperParameter {
             // Some attributes are not needed for EXACT solver
             alpha: 0.,
-            tol: Some(0.01),
+            tol: Some(1e-10),
             solver: RidgeRegressionSolver::SGD,
             fit_intercept: intercept.abs() > 0.,
             random_state: None,

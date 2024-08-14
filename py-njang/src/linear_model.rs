@@ -159,7 +159,7 @@ macro_rules! impl_ridge_reg {
                 let solver = if let Some(solvr) = solver {
                     if solvr == "sgd" {
                         RidgeRegressionSolver::SGD
-                    } else if solvr == "ols" {
+                    } else if solvr == "exact" {
                         RidgeRegressionSolver::EXACT
                     } else if solvr == "qr" {
                         RidgeRegressionSolver::QR

@@ -1,25 +1,26 @@
-use ndarray::{linalg::Dot, Array, Array1, Array2, Ix0, Ix1, Ix2, ScalarOperand};
-
 use crate::linear_model::{randn_1d, randn_2d};
 use crate::RegressionModel;
+use crate::{l2_norm1, l2_norm2};
 use crate::{linear_model::preprocess, traits::Info};
+#[allow(unused)]
 use core::{
     marker::{Send, Sync},
     ops::{Add, Mul, Sub},
 };
+use ndarray::{linalg::Dot, s, Array, Array1, Array2, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_linalg::{error::LinalgError, Inverse, Lapack, QR};
 use ndarray_rand::{
     rand::{distributions::Distribution, SeedableRng},
     rand_distr::{StandardNormal, Uniform},
     RandomExt,
 };
-use num_traits::FromPrimitive;
+use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
 
 /// Solver to use when fitting a ridge regression model (L2-penalty with Ordinary Least Squares).
 #[derive(Debug, Default)]
 pub enum RidgeRegressionSolver {
-    /// Solves using stochastic gradient descent
+    /// Solves the problem using Stochastic Gradient Descent
     ///
     /// Make sure to standardize the input predictors, otherwise the algorithm may not converge.
     #[default]
@@ -29,6 +30,8 @@ pub enum RidgeRegressionSolver {
     /// Uses QR decomposition of the matrix x.t().dot(x) + alpha * eye to solve the problem
     /// (x.t().dot(x) + alpha * eye) * coef = x.t().dot(y) with respect to coef
     QR,
+    /// Solves the problemen using Stochastic Average Gradient
+    SAG,
 }
 
 /// Hyperparameters used in a Ridge regression.
@@ -36,7 +39,10 @@ pub enum RidgeRegressionSolver {
 /// - **alpha**: L2-norm penalty magnitude.
 /// - **fit_intercept**: `true` means fit with an intercept, `false` without an intercept.
 /// - **solver**: optimization method see [`RidgeRegressionSolver`].
-/// - **tol**: tolerance parameter.
+/// - **tol**: tolerance parameter:
+///     - stochastic algorithms (like SGD) stop when the relative variation of consecutive
+///       iterates L2-norms is lower than **tol**.
+///     - No impact on the other algorithms.
 /// - **random_state**: seed of random generators.
 /// - **max_iter**: maximum number of iterations.
 /// - **warm_start**: whether or not warm starting is allowed.
@@ -133,15 +139,18 @@ impl<C, I, T> RidgeRegression<C, I, T> {
 }
 
 macro_rules! impl_ridge_reg {
-    ($ix:ty, $ix_smaller:ty,  $randn:ident, $grad:ident) => {
+    ($ix:ty, $ix_smaller:ty,  $randn:ident, $norm:ident, $grad:ident, $sgd:ident, $sag:ident) => {
         impl<T> RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T> {
             fn init_stochastic_algo(
                 &self,
                 x: &Array2<T>,
                 y: &Array<T, $ix>,
-            ) -> (T, usize, T, Array1<usize>, Array<T, $ix>)
+            ) -> (T, usize, T, Array1<usize>, Array<T, $ix>, Option<Array2<T>>)
             where
-                T: Lapack + Clone,
+                for<'a> T: Lapack
+                    + Clone
+                    + Mul<&'a Array<T, Ix2>, Output = Array<T, Ix2>>
+                    + Mul<&'a Array<T, Ix1>, Output = Array<T, Ix1>>,
                 StandardNormal: Distribution<T>,
             {
                 let mut rng =
@@ -157,24 +166,48 @@ macro_rules! impl_ridge_reg {
                 } else {
                     $randn(n_features, y.shape(), &mut rng)
                 };
-                let max_iter = self.settings.max_iter.unwrap_or(1000);
                 let nf = T::from_f32(n_samples as f32).unwrap(); // critical when number of samples > int(f3::MAX) ?
-                let lambda = T::from_f32(0.001).unwrap(); // to determine automatically.
+                let alpha_norm = self.settings.alpha / nf;
+                let gradients: Option<Array2<T>> = match self.settings.solver {
+                    RidgeRegressionSolver::SAG => {
+                        let shape = y.shape();
+                        let nb_reg = if shape.len() == 1 { 1 } else { shape[1] };
+                        let mut grad = Array2::<T>::zeros((n_samples * nb_reg, n_features));
+                        // for r in 0..nb_reg {
+                        //     let (start, end) = (r * n_samples, (r + 1) * n_samples);
+                        //     // for k in 0..n_samples {
+                        //     alpha_norm * &coef + (x.dot(&coef) - y) * x;
+                        //     Array2::<T>::zeros((n_samples, n_features))
+                        //         .assign_to(grad.slice_mut(s!(start..end, ..)));
+                        //     // }
+                        // }
+                        // for r in 0..n_features{
+                        //     grad.row_mut(r, );
+                        // }
+                        Some(grad)
+                    }
+                    _ => None,
+                };
+                let max_iter = self.settings.max_iter.unwrap_or(1000);
                 let samples = Array::<usize, _>::random_using(
                     max_iter,
                     Uniform::from(0..n_samples),
                     &mut rng,
                 );
-                let alpha_norm = self.settings.alpha / nf;
-                (alpha_norm, max_iter, lambda, samples, coef)
+                let tol = self.settings.tol.unwrap_or(T::from_f32(1e-4).unwrap());
+                (alpha_norm, max_iter, tol, samples, coef, gradients)
             }
         }
         impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T>
         where
-            T: Lapack
+            for<'a> T: Lapack
+                + Float
                 + ScalarOperand
                 + Mul<Array1<T>, Output = Array1<T>>
-                + Mul<Array2<T>, Output = Array2<T>>,
+                + Mul<Array2<T>, Output = Array2<T>>
+                + Mul<&'a Array<T, Ix2>, Output = Array<T, Ix2>>
+                + Mul<&'a Array<T, Ix1>, Output = Array<T, Ix1>>
+                + core::fmt::Debug,
             StandardNormal: Distribution<T>,
             Array2<T>: Dot<Array2<T>, Output = Array2<T>>
                 + Inverse<Output = Array2<T>>
@@ -186,6 +219,7 @@ macro_rules! impl_ridge_reg {
                     ColOutput = Array1<T>,
                     ColMut = Array1<T>,
                     NcolsOutput = usize,
+                    NrowsOutput = usize,
                 >,
             Array<T, Ix1>: Info<MeanOutput = Array<T, Ix0>, RowOutput = T>,
             for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
@@ -199,7 +233,7 @@ macro_rules! impl_ridge_reg {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
                     let coef = match self.settings.solver {
                         RidgeRegressionSolver::SGD => {
-                            let (alpha_norm, max_iter, lambda, samples, coef) =
+                            let (alpha_norm, max_iter, tol, samples, coef, _) =
                                 self.init_stochastic_algo(x, y);
                             $grad(
                                 &x_centered,
@@ -208,7 +242,7 @@ macro_rules! impl_ridge_reg {
                                 max_iter,
                                 &samples,
                                 alpha_norm,
-                                lambda,
+                                ($sgd, $norm, tol, &None), // use a struct ?
                             )
                         }
                         RidgeRegressionSolver::EXACT => {
@@ -235,16 +269,36 @@ macro_rules! impl_ridge_reg {
                                 Err(error) => return Err(error),
                             }
                         }
+                        RidgeRegressionSolver::SAG => {
+                            let (alpha_norm, max_iter, tol, samples, coef, gradients) =
+                                self.init_stochastic_algo(x, y);
+                            $grad(
+                                &x_centered,
+                                &y_centered,
+                                coef,
+                                max_iter,
+                                &samples,
+                                alpha_norm,
+                                ($sag, $norm, tol, &None), // use a struct ?
+                            )
+                        }
                     };
                     self.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.coef = Some(coef);
                 } else {
                     match self.settings.solver {
                         RidgeRegressionSolver::SGD => {
-                            let (alpha_norm, max_iter, lambda, samples, coef) =
+                            let (alpha_norm, max_iter, tol, samples, coef, _) =
                                 self.init_stochastic_algo(x, y);
-                            self.coef =
-                                Some($grad(x, y, coef, max_iter, &samples, alpha_norm, lambda));
+                            self.coef = Some($grad(
+                                x,
+                                y,
+                                coef,
+                                max_iter,
+                                &samples,
+                                alpha_norm,
+                                ($sgd, $norm, tol, &None),
+                            ));
                         }
                         RidgeRegressionSolver::EXACT => {
                             let xt = x.t();
@@ -267,6 +321,19 @@ macro_rules! impl_ridge_reg {
                                 Err(error) => return Err(error),
                             });
                         }
+                        RidgeRegressionSolver::SAG => {
+                            let (alpha_norm, max_iter, tol, samples, coef, gradients) =
+                                self.init_stochastic_algo(x, y);
+                            self.coef = Some($grad(
+                                x,
+                                y,
+                                coef,
+                                max_iter,
+                                &samples,
+                                alpha_norm,
+                                ($sag, $norm, tol, &None), // use a struct ?
+                            ));
+                        }
                     }
                 }
                 Ok(())
@@ -288,80 +355,164 @@ macro_rules! impl_ridge_reg {
         }
     };
 }
-impl_ridge_reg!(Ix1, Ix0, randn_1d, grad_1d);
-impl_ridge_reg!(Ix2, Ix1, randn_2d, grad_2d);
+impl_ridge_reg!(
+    Ix1,
+    Ix0,
+    randn_1d,
+    l2_norm1,
+    grad_1d,
+    sgd_updator,
+    sag_updator
+);
 
-struct RidgeSgdUpdate<'a, T, X> {
-    pub lambda: T,
-    pub alpha: T,
-    pub x: X,
-    pub y: T,
-    pub c: &'a X,
-}
-impl<'a, T, X> RidgeSgdUpdate<'a, T, X> {
-    pub fn compute(self) -> X
-    where
-        T: Mul<&'a X, Output = X> + Mul<X, Output = X> + Sub<T, Output = T>,
-        X: Dot<X, Output = T> + Add<X, Output = X>,
-    {
-        self.lambda * (self.alpha * self.c + (self.x.dot(self.c) - self.y) * self.x)
+impl_ridge_reg!(
+    Ix2,
+    Ix1,
+    randn_2d,
+    l2_norm1,
+    grad_2d,
+    sgd_updator,
+    sag_updator
+);
+
+fn sgd_updator<T, X, Y>(
+    x: &X,
+    y: &Y,
+    coef: &Y,
+    i: usize,
+    alpha: T,
+    lambda: Option<T>,
+    _gradients: &Option<&mut X>,
+) -> Y
+where
+    Y: Info<RowOutput = T> + Dot<Y, Output = T> + Add<Y, Output = Y>,
+    for<'a> &'a Y: Sub<Y, Output = Y>,
+    X: Info<RowOutput = Y>,
+    for<'a> T: Sub<T, Output = T> + Copy + Mul<Y, Output = Y> + Mul<&'a Y, Output = Y>,
+{
+    let xi = x.get_row(i);
+    let yi = y.get_row(i);
+    let pre_update = alpha * coef + (xi.dot(coef) - yi) * xi;
+    if let Some(lamb) = lambda {
+        lamb * pre_update
+    } else {
+        pre_update
     }
 }
-fn grad_1d<T, X, Y>(
+
+fn sag_updator<T, X, Y>(
+    x: &X,
+    y: &Y,
+    coef: &Y,
+    i: usize,
+    alpha: T,
+    lambda: Option<T>,
+    gradients: &Option<&mut X>,
+) -> Y
+where
+    Y: Info<RowOutput = T> + Dot<Y, Output = T> + Add<Y, Output = Y> + Sub<Y, Output = Y>,
+    for<'a> &'a Y: Sub<Y, Output = Y> + Add<Y, Output = Y>,
+    X: Info<RowOutput = Y, MeanOutput = Y, ColMut = Y, NrowsOutput = usize>,
+    for<'a> T:
+        Sub<T, Output = T> + Copy + Mul<Y, Output = Y> + Mul<&'a Y, Output = Y> + FromPrimitive,
+{
+    let xi = x.get_row(i);
+    let yi = y.get_row(i);
+    let gradi = alpha * coef + (xi.dot(coef) - yi) * xi;
+    // Safe to .unwrap() ?
+    let scale = T::from_f32(1. / (x.get_nrows() as f32)).unwrap();
+    let update = if let Some(grad) = gradients {
+        let pre_update = scale * (&gradi - grad.get_row(i)) + grad.mean();
+        if let Some(lamb) = lambda {
+            lamb * pre_update
+        } else {
+            pre_update
+        }
+    } else {
+        panic!("No gradients provided");
+    };
+    // TODO update gradients
+    // if let Some(grad) = gradients {
+    //     (*grad).col_mut(i, gradi); // To change to row_mut;
+    // }
+    update
+}
+
+fn grad_1d<T, X, Y, U, N>(
     x: &X,
     y: &Y,
     mut coef: Y,
     max_iter: usize,
     samples: &Array1<usize>,
     alpha_norm: T,
-    lambda: T,
+    updators: (U, N, T, &Option<&mut X>),
 ) -> Y
 where
     Y: Info<RowOutput = T> + Dot<Y, Output = T> + Add<Y, Output = Y>,
     for<'a> &'a Y: Sub<Y, Output = Y>,
     X: Info<RowOutput = Y>,
-    T: Sub<T, Output = T> + Copy,
-    for<'a> T: Mul<Y, Output = Y> + Mul<&'a Y, Output = Y>,
+    for<'a> T: Sub<T, Output = T>
+        + Copy
+        + Mul<Y, Output = Y>
+        + Mul<&'a Y, Output = Y>
+        + FromPrimitive
+        + Float
+        + core::fmt::Debug,
+    U: Fn(&X, &Y, &Y, usize, T, Option<T>, &Option<&mut X>) -> Y,
+    N: Fn(&Y) -> T,
 {
+    let (updator, norm_func, tol, gradients) = updators;
     for k in 0..max_iter {
         let i = samples[k];
-        let update = RidgeSgdUpdate {
-            lambda,
-            x: x.get_row(i),
-            alpha: alpha_norm,
-            y: y.get_row(i),
-            c: &coef,
+        let update = updator(x, y, &coef, i, alpha_norm, T::from_f32(0.001), gradients);
+        if norm_func(&update).abs() <= tol * norm_func(&coef) {
+            break;
         }
-        .compute();
         coef = &coef - update;
     }
     coef
 }
 
-fn grad_2d<T, X, Xsmaller>(
+fn grad_2d<T, X, Xs, U, N>(
     x: &X,
     y: &X,
     mut coef: X,
     max_iter: usize,
     samples: &Array1<usize>,
     alpha_norm: T,
-    lambda: T,
+    updators: (U, N, T, &Option<&mut X>),
 ) -> X
 where
-    Xsmaller: Info<RowOutput = T> + Dot<Xsmaller, Output = T> + Add<Xsmaller, Output = Xsmaller>,
-    for<'a> &'a Xsmaller: Sub<Xsmaller, Output = Xsmaller>,
-    X: Info<RowOutput = Xsmaller, ColOutput = Xsmaller, NcolsOutput = usize, ColMut = Xsmaller>,
-    T: Sub<T, Output = T> + Copy,
-    for<'a> T: Mul<Xsmaller, Output = Xsmaller> + Mul<&'a Xsmaller, Output = Xsmaller>,
+    Xs: Info<RowOutput = T> + Dot<Xs, Output = T> + Add<Xs, Output = Xs>,
+    for<'a> &'a Xs: Sub<Xs, Output = Xs>,
+    X: Info<RowOutput = Xs, ColOutput = Xs, NcolsOutput = usize, ColMut = Xs>,
+    for<'a> T: Sub<T, Output = T>
+        + Copy
+        + Mul<Xs, Output = Xs>
+        + Mul<&'a Xs, Output = Xs>
+        + FromPrimitive
+        + Float
+        + core::fmt::Debug,
+    U: Fn(&X, &Xs, &Xs, usize, T, Option<T>, &Option<&mut X>) -> Xs,
+    N: Fn(&Xs) -> T,
 {
     let nb_reg = coef.get_ncols();
+    let (updator, norm_func, tol, gradients) = updators;
     (0..nb_reg)
         .map(|r| {
             let coefr = coef.get_col(r);
             let yr = y.get_col(r);
             coef.col_mut(
                 r,
-                grad_1d(x, &yr, coefr, max_iter, samples, alpha_norm, lambda),
+                grad_1d(
+                    x,
+                    &yr,
+                    coefr,
+                    max_iter,
+                    samples,
+                    alpha_norm,
+                    (&updator, &norm_func, tol, gradients),
+                ),
             );
         })
         .for_each(drop);
