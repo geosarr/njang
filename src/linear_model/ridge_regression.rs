@@ -8,7 +8,7 @@ use core::{
     ops::{Add, Mul, Sub},
 };
 use ndarray::{linalg::Dot, s, Array, Array1, Array2, Ix0, Ix1, Ix2, ScalarOperand};
-use ndarray_linalg::{error::LinalgError, Inverse, Lapack, QR};
+use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
     rand::{distributions::Distribution, SeedableRng},
     rand_distr::{StandardNormal, Uniform},
@@ -30,8 +30,10 @@ pub enum RidgeRegressionSolver {
     /// Uses QR decomposition of the matrix x.t().dot(x) + alpha * eye to solve the problem
     /// (x.t().dot(x) + alpha * eye) * coef = x.t().dot(y) with respect to coef
     QR,
-    /// Solves the problemen using Stochastic Average Gradient
+    /// Solves the problem using Stochastic Average Gradient
     SAG,
+    /// Solves the problem using Cholesky decomposition
+    CHOLESKY,
 }
 
 /// Hyperparameters used in a Ridge regression.
@@ -173,14 +175,18 @@ macro_rules! impl_ridge_reg {
                         let shape = y.shape();
                         let nb_reg = if shape.len() == 1 { 1 } else { shape[1] };
                         let mut grad = Array2::<T>::zeros((n_samples * nb_reg, n_features));
-                        // for r in 0..nb_reg {
-                        //     let (start, end) = (r * n_samples, (r + 1) * n_samples);
-                        //     // for k in 0..n_samples {
-                        //     alpha_norm * &coef + (x.dot(&coef) - y) * x;
-                        //     Array2::<T>::zeros((n_samples, n_features))
-                        //         .assign_to(grad.slice_mut(s!(start..end, ..)));
-                        //     // }
-                        // }
+                        for r in 0..nb_reg {
+                            let (start, end) = (r * n_samples, (r + 1) * n_samples);
+                            // for k in 0..n_samples {
+                            //     let xi = x.get_row(k);
+                            //     let yi = y.get_row(k);
+                            //     // let g = alpha_norm * &coef +
+                            //     let g = (xi.dot(&coef) - yi) * xi;
+                            // }
+                            Array2::<T>::zeros((n_samples, n_features))
+                                .assign_to(grad.slice_mut(s!(start..end, ..)));
+                            // }
+                        }
                         // for r in 0..n_features{
                         //     grad.row_mut(r, );
                         // }
@@ -212,6 +218,7 @@ macro_rules! impl_ridge_reg {
             Array2<T>: Dot<Array2<T>, Output = Array2<T>>
                 + Inverse<Output = Array2<T>>
                 + QR<Q = Array2<T>, R = Array2<T>>
+                + Cholesky<Output = Array2<T>>
                 + Dot<Array1<T>, Output = Array1<T>>
                 + Info<
                     MeanOutput = Array1<T>,
@@ -282,6 +289,19 @@ macro_rules! impl_ridge_reg {
                                 ($sag, $norm, tol, &None), // use a struct ?
                             )
                         }
+                        RidgeRegressionSolver::CHOLESKY => {
+                            let xct = x_centered.t();
+                            match (xct.dot(&x_centered)
+                                + self.settings.alpha * Array2::eye(x.ncols()))
+                            .cholesky(UPLO::Lower)
+                            {
+                                Ok(mat) => match mat.inv() {
+                                    Ok(inv_m) => inv_m.t().dot(&inv_m).dot(&xct).dot(&y_centered),
+                                    Err(error) => return Err(error),
+                                },
+                                Err(error) => return Err(error),
+                            }
+                        }
                     };
                     self.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.coef = Some(coef);
@@ -322,7 +342,7 @@ macro_rules! impl_ridge_reg {
                             });
                         }
                         RidgeRegressionSolver::SAG => {
-                            let (alpha_norm, max_iter, tol, samples, coef, gradients) =
+                            let (alpha_norm, max_iter, tol, samples, coef, mut gradients) =
                                 self.init_stochastic_algo(x, y);
                             self.coef = Some($grad(
                                 x,
@@ -331,8 +351,22 @@ macro_rules! impl_ridge_reg {
                                 max_iter,
                                 &samples,
                                 alpha_norm,
-                                ($sag, $norm, tol, &None), // use a struct ?
+                                ($sag, $norm, tol, &gradients.as_mut()), // use a struct ?
                             ));
+                        }
+                        RidgeRegressionSolver::CHOLESKY => {
+                            let xt = x.t();
+                            self.coef = Some(
+                                match (xt.dot(x) + self.settings.alpha * Array2::eye(x.ncols()))
+                                    .cholesky(UPLO::Lower)
+                                {
+                                    Ok(mat) => match mat.inv() {
+                                        Ok(inv_m) => inv_m.t().dot(&inv_m).dot(&xt).dot(y),
+                                        Err(error) => return Err(error),
+                                    },
+                                    Err(error) => return Err(error),
+                                },
+                            );
                         }
                     }
                 }

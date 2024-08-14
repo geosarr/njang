@@ -163,6 +163,8 @@ macro_rules! impl_ridge_reg {
                         RidgeRegressionSolver::EXACT
                     } else if solvr == "qr" {
                         RidgeRegressionSolver::QR
+                    } else if solvr == "cholesky" {
+                        RidgeRegressionSolver::CHOLESKY
                     } else {
                         return Err(PyValueError::new_err(format!(
                             "solver `{}` not supported",

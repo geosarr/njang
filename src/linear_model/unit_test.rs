@@ -211,4 +211,29 @@ mod tests {
         // println!("{:?}", ridge.intercept());
         assert!(l2_diff2(&coef, &ridge.coef().unwrap()) < 5e-3);
     }
+
+    #[test]
+    fn test_sag() {
+        let intercept = 0.;
+        let (x, y, coef) = one_reg_dataset(intercept);
+        // use ndarray_linalg::{Cholesky, UPLO};
+        // let xtx = x.t().dot(&x);
+        // let l = xtx.cholesky(UPLO::Lower).unwrap();
+        // println!("{:?}", xtx);
+        // println!("{:?}", l);
+        // println!("{:?}", l.dot(&l.t()));
+        let mut ridge = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionHyperParameter {
+            // Some attributes are not needed for EXACT solver
+            alpha: 0.,
+            tol: Some(1e-10),
+            solver: RidgeRegressionSolver::CHOLESKY,
+            fit_intercept: intercept.abs() > 0.,
+            random_state: None,
+            max_iter: Some(1),
+            warm_start: false,
+        });
+        let _ = ridge.fit(&x, &y);
+        // let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(), ridge.intercept());
+        // println!("{:?}", fitted_coef);
+    }
 }
