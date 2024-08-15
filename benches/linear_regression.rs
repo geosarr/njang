@@ -58,3 +58,15 @@ fn fit_lin_reg_qr_bench(bench: &mut Bencher) {
         let _solution = lin_reg.fit(&x, &y);
     });
 }
+
+#[bench]
+fn fit_lin_reg_chol_bench(bench: &mut Bencher) {
+    let (x, y) = dataset();
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
+        fit_intercept: false,
+        solver: LinearRegressionSolver::CHOLESKY,
+    });
+    bench.iter(|| {
+        let _solution = lin_reg.fit(&x, &y);
+    });
+}

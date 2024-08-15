@@ -7,7 +7,7 @@ use crate::{
     traits::Info,
     RegressionModel,
 };
-use ndarray_linalg::{error::LinalgError, Inverse, Lapack, LeastSquaresSvd, QR};
+use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd, QR};
 
 /// Solver to use when fitting a linear regression model (Ordinary Least Squares, OLS).
 #[derive(Debug, Default)]
@@ -20,6 +20,8 @@ pub enum LinearRegressionSolver {
     EXACT,
     /// Uses QR decomposition to solve the problem.
     QR,
+    /// Uses Cholesky decomposition
+    CHOLESKY,
 }
 
 /// Hyperparameters used in a linear regression model
@@ -105,6 +107,10 @@ macro_rules! impl_lin_reg {
                             let xct = x_centered.t();
                             $qr_name(xct.dot(&x_centered), xct, &y_centered)?
                         }
+                        LinearRegressionSolver::CHOLESKY => {
+                            let xct = x_centered.t();
+                            $chol_name(xct.dot(&x_centered), xct, &y_centered)?
+                        }
                     };
                     self.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.coef = Some(coef);
@@ -118,6 +124,10 @@ macro_rules! impl_lin_reg {
                         LinearRegressionSolver::QR => {
                             let xt = x.t();
                             $qr_name(xt.dot(x), xt, y)?
+                        }
+                        LinearRegressionSolver::CHOLESKY => {
+                            let xt = x.t();
+                            $chol_name(xt.dot(x), xt, y)?
                         }
                     };
                     self.coef = Some(coef);

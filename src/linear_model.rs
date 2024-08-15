@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
 };
-use ndarray::{linalg::Dot, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2, ScalarOperand};
+use ndarray::{Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
     rand::{distributions::Distribution, Rng},
@@ -84,7 +84,6 @@ macro_rules! impl_linalg {
 }
 impl_linalg!(solve_exact1, solve_qr1, solve_chol1, Ix1);
 impl_linalg!(solve_exact2, solve_qr2, solve_chol2, Ix2);
-// pub(crate) fn cholesky<T>(x: &Array2<T>, y: &Y) {}
 
 pub(crate) fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>
 where

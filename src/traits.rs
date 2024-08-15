@@ -1,6 +1,6 @@
 use core::ops::Mul;
 use core::ops::Not;
-use ndarray::{linalg::Dot, Array1, Array2, ArrayView2, ScalarOperand};
+use ndarray::{linalg::Dot, Array1, Array2, ScalarOperand};
 use ndarray_linalg::{Cholesky, Inverse, Lapack, QR};
 use num_traits::{Float, FromPrimitive};
 /// Implements classic steps of a regression model.

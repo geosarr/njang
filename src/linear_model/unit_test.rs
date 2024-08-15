@@ -107,6 +107,7 @@ mod tests {
             LinearRegressionSolver::SVD,
             LinearRegressionSolver::QR,
             LinearRegressionSolver::EXACT,
+            LinearRegressionSolver::CHOLESKY,
         ];
         for solver in solvers {
             let mut model =
@@ -220,7 +221,7 @@ mod tests {
     #[test]
     fn test_sag() {
         let intercept = 0.;
-        let (x, y, coef) = one_reg_dataset(intercept);
+        let (x, y, _coef) = one_reg_dataset(intercept);
         // use ndarray_linalg::{Cholesky, UPLO};
         // let xtx = x.t().dot(&x);
         // let l = xtx.cholesky(UPLO::Lower).unwrap();
