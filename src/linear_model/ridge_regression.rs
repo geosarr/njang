@@ -1,13 +1,14 @@
+use crate::l2_norm1;
 use crate::linear_model::{randn_1d, randn_2d};
+use crate::traits::{Linalg, Scalar};
 use crate::RegressionModel;
-use crate::{l2_norm1, l2_norm2};
 use crate::{linear_model::preprocess, traits::Info};
 #[allow(unused)]
 use core::{
     marker::{Send, Sync},
     ops::{Add, Mul, Sub},
 };
-use ndarray::{linalg::Dot, s, Array, Array1, Array2, Ix0, Ix1, Ix2, ScalarOperand};
+use ndarray::{linalg::Dot, s, Array, Array0, Array1, Array2, Ix0, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
     rand::{distributions::Distribution, SeedableRng},
@@ -18,6 +19,8 @@ use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
 
 /// Solver to use when fitting a ridge regression model (L2-penalty with Ordinary Least Squares).
+///
+/// Here `alpha` is the magnitude of the penalty.
 #[derive(Debug, Default)]
 pub enum RidgeRegressionSolver {
     /// Solves the problem using Stochastic Gradient Descent
@@ -25,14 +28,16 @@ pub enum RidgeRegressionSolver {
     /// Make sure to standardize the input predictors, otherwise the algorithm may not converge.
     #[default]
     SGD,
-    /// Computes the solution: (x.t().dot(x) + alpha * eye).inverse().dot(x.t().dot(y))
+    /// Computes the solution:
+    /// - `(x.t().dot(x) + alpha * eye).inverse().dot(x.t().dot(y))`
     EXACT,
-    /// Uses QR decomposition of the matrix x.t().dot(x) + alpha * eye to solve the problem
-    /// (x.t().dot(x) + alpha * eye) * coef = x.t().dot(y) with respect to coef
+    /// Uses QR decomposition of the matrix `x.t().dot(x) + alpha * eye` to solve the problem:
+    /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to `coef`
     QR,
     /// Solves the problem using Stochastic Average Gradient
     SAG,
-    /// Solves the problem using Cholesky decomposition
+    /// Uses Cholesky decomposition of the matrix `x.t().dot(x) + alpha * eye` to solve the problem:
+    /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to `coef`
     CHOLESKY,
 }
 
@@ -89,6 +94,7 @@ impl<T> RidgeRegressionHyperParameter<T> {
     }
 }
 
+/// L2-norm penalized Ordinary Least Squares.
 #[derive(Debug)]
 pub struct RidgeRegression<C, I, T = f32> {
     coef: Option<C>,
@@ -206,30 +212,19 @@ macro_rules! impl_ridge_reg {
         }
         impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T>
         where
-            for<'a> T: Lapack
-                + Float
-                + ScalarOperand
-                + Mul<Array1<T>, Output = Array1<T>>
-                + Mul<Array2<T>, Output = Array2<T>>
-                + Mul<&'a Array<T, Ix2>, Output = Array<T, Ix2>>
-                + Mul<&'a Array<T, Ix1>, Output = Array<T, Ix1>>
-                + core::fmt::Debug,
-            StandardNormal: Distribution<T>,
-            Array2<T>: Dot<Array2<T>, Output = Array2<T>>
-                + Inverse<Output = Array2<T>>
-                + QR<Q = Array2<T>, R = Array2<T>>
-                + Cholesky<Output = Array2<T>>
-                + Dot<Array1<T>, Output = Array1<T>>
-                + Info<
+            T: Scalar<Array2<T>> + Scalar<Array1<T>>,
+            Array1<T>: Info<MeanOutput = Array0<T>, RowOutput = T>,
+            Array2<T>: Info<
                     MeanOutput = Array1<T>,
                     RowOutput = Array1<T>,
                     ColOutput = Array1<T>,
                     ColMut = Array1<T>,
                     NcolsOutput = usize,
                     NrowsOutput = usize,
-                >,
-            Array<T, Ix1>: Info<MeanOutput = Array<T, Ix0>, RowOutput = T>,
-            for<'a> T: Mul<&'a Array1<T>, Output = Array1<T>>,
+                > + Dot<Array1<T>, Output = Array1<T>>
+                + Dot<Array2<T>, Output = Array2<T>>
+                + Linalg,
+            StandardNormal: Distribution<T>,
         {
             type FitResult = Result<(), LinalgError>;
             type X = Array2<T>;

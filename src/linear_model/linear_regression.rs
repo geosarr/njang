@@ -2,32 +2,54 @@ use ndarray::{linalg::Dot, Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
 
 use crate::{linear_model::preprocess, traits::Info, RegressionModel};
 use ndarray_linalg::{error::LinalgError, Inverse, Lapack, LeastSquaresSvd, QR};
+
 /// Solver to use when fitting a linear regression model (Ordinary Least Squares, OLS).
 #[derive(Debug, Default)]
 pub enum LinearRegressionSolver {
     /// Solves the problem using Singular Value Decomposition
     #[default]
     SVD,
-    /// Computes the exact solution: x.t().dot(x).inverse().dot(x.t()).dot(y)
+    /// Computes the exact solution:
+    /// - `x.t().dot(x).inverse().dot(x.t()).dot(y)`
     EXACT,
-    /// Uses QR decomposition to solve the problem
+    /// Uses QR decomposition to solve the problem.
     QR,
 }
 
 /// Hyperparameters used in a linear regression model
+///
+/// - **fit_intercept**: `true` means fit with an intercept, `false` without an intercept.
+/// - **solver**: optimization method see [`LinearRegressionSolver`].
 #[derive(Debug, Default)]
 pub struct LinearRegressionHyperParameter {
     pub fit_intercept: bool,
     pub solver: LinearRegressionSolver,
 }
 
-/// Ordinary Least Squares (OLS)
+/// Ordinary Least Squares (OLS).
 ///
-/// Minimization of the L2-norm `||xb - y||`<sup/>2</sup> with respect to `b`, for regressors/predictors `x` and targets `y`.
+/// Minimization of the L2-norm `||Xb - Y||`<sup/>2</sup> with respect to `b`, for regressors/predictors `X` and targets `Y`.
 ///
-/// The vector of coefficients `b = self.coef` if `self.fit_intercept = false` else  `b = (self.intercept, self.coef)'`.
+/// The vector of coefficients satisfies:
+/// - if `self.fit_intercept = false`, then `Xb = X*self.coef`
+/// - if `self.fit_intercept = true`, then `Xb = X*self.coef + self.intercept`.
 ///
-/// It is able to fit at once many regressions with the same input regressors `x`, when `x` and `y` are of type `Array2<T>` from ndarray crate.
+/// It is able to fit at once many regressions with the same input regressors `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate.
+/// The same hyperparameter `fit_intercept` applies for all regressions involved.
+/// ```
+/// use ndarray::{array, Array1, Array2};
+/// use njang::{LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver, RegressionModel};
+/// let x = array![[0., 1.], [1., -1.], [-2., 3.]];
+/// let coef = array![[10., 30.], [20., 40.]];
+/// let y = x.dot(&coef) + 1.;
+/// // multiple linear regression models with intercept.
+/// let mut model = LinearRegression::<Array2<f32>, Array1<f32>>::new(LinearRegressionHyperParameter {
+///     fit_intercept: true,
+///     solver: LinearRegressionSolver::EXACT,
+/// });
+/// model.fit(&x, &y);
+/// assert!((model.coef().unwrap() - &coef).map(|error: &f32| error.powi(2)).sum().sqrt() < 1e-6);
+/// ```
 #[derive(Debug)]
 pub struct LinearRegression<C, I> {
     coef: Option<C>,

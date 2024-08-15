@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-mod linear_model;
+pub mod linear_model;
 mod traits;
 mod utils;
 
@@ -11,4 +11,4 @@ pub use linear_model::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver, RidgeRegression,
     RidgeRegressionHyperParameter, RidgeRegressionSolver,
 };
-pub use traits::RegressionModel;
+pub use traits::{Info, RegressionModel};
