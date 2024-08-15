@@ -2,7 +2,12 @@ use crate::l2_norm1;
 use crate::linear_model::{randn_1d, randn_2d};
 use crate::traits::{Linalg, Scalar};
 use crate::RegressionModel;
-use crate::{linear_model::preprocess, traits::Info};
+use crate::{
+    linear_model::{
+        preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
+    },
+    traits::Info,
+};
 #[allow(unused)]
 use core::{
     marker::{Send, Sync},
@@ -147,7 +152,7 @@ impl<C, I, T> RidgeRegression<C, I, T> {
 }
 
 macro_rules! impl_ridge_reg {
-    ($ix:ty, $ix_smaller:ty,  $randn:ident, $norm:ident, $grad:ident, $sgd:ident, $sag:ident) => {
+    ($ix:ty, $ix_smaller:ty, $randn:ident, $norm:ident, $grad:ident, $sgd:ident, $sag:ident, $exact_name:ident, $qr_name:ident, $chol_name:ident) => {
         impl<T> RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T> {
             fn init_stochastic_algo(
                 &self,
@@ -248,28 +253,20 @@ macro_rules! impl_ridge_reg {
                             )
                         }
                         RidgeRegressionSolver::EXACT => {
-                            let xct = x_centered.t();
-                            match (xct.dot(&x_centered)
-                                + self.settings.alpha * Array2::eye(x.ncols()))
-                            .inv()
-                            {
-                                Ok(mat) => mat.dot(&xct).dot(&y_centered),
-                                Err(error) => return Err(error),
-                            }
+                            let (xct, alpha) = (x_centered.t(), self.settings.alpha);
+                            $exact_name(
+                                xct.dot(&x_centered) + alpha * Array2::eye(x.ncols()),
+                                xct,
+                                &y_centered,
+                            )?
                         }
                         RidgeRegressionSolver::QR => {
-                            let xct = x_centered.t();
-                            let (q, r) = match (xct.dot(&x_centered)
-                                + self.settings.alpha * Array2::eye(x.ncols()))
-                            .qr()
-                            {
-                                Ok((q, r)) => (q, r),
-                                Err(error) => return Err(error),
-                            };
-                            match r.inv() {
-                                Ok(inv_r) => inv_r.dot(&q.t().dot(&xct).dot(&y_centered)),
-                                Err(error) => return Err(error),
-                            }
+                            let (xct, alpha) = (x_centered.t(), self.settings.alpha);
+                            $qr_name(
+                                xct.dot(&x_centered) + alpha * Array2::eye(x.ncols()),
+                                xct,
+                                &y_centered,
+                            )?
                         }
                         RidgeRegressionSolver::SAG => {
                             let (alpha_norm, max_iter, tol, samples, coef, gradients) =
@@ -285,27 +282,22 @@ macro_rules! impl_ridge_reg {
                             )
                         }
                         RidgeRegressionSolver::CHOLESKY => {
-                            let xct = x_centered.t();
-                            match (xct.dot(&x_centered)
-                                + self.settings.alpha * Array2::eye(x.ncols()))
-                            .cholesky(UPLO::Lower)
-                            {
-                                Ok(mat) => match mat.inv() {
-                                    Ok(inv_m) => inv_m.t().dot(&inv_m).dot(&xct).dot(&y_centered),
-                                    Err(error) => return Err(error),
-                                },
-                                Err(error) => return Err(error),
-                            }
+                            let (xct, alpha) = (x_centered.t(), self.settings.alpha);
+                            $chol_name(
+                                xct.dot(&x_centered) + alpha * Array2::eye(x.ncols()),
+                                xct,
+                                &y_centered,
+                            )?
                         }
                     };
                     self.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.coef = Some(coef);
                 } else {
-                    match self.settings.solver {
+                    let coef = match self.settings.solver {
                         RidgeRegressionSolver::SGD => {
                             let (alpha_norm, max_iter, tol, samples, coef, _) =
                                 self.init_stochastic_algo(x, y);
-                            self.coef = Some($grad(
+                            $grad(
                                 x,
                                 y,
                                 coef,
@@ -313,33 +305,20 @@ macro_rules! impl_ridge_reg {
                                 &samples,
                                 alpha_norm,
                                 ($sgd, $norm, tol, &None),
-                            ));
+                            )
                         }
                         RidgeRegressionSolver::EXACT => {
-                            let xt = x.t();
-                            self.coef = Some(
-                                match (xt.dot(x) + self.settings.alpha * Array2::eye(x.ncols()))
-                                    .inv()
-                                {
-                                    Ok(mat) => mat.dot(&xt).dot(y),
-                                    Err(error) => return Err(error),
-                                },
-                            );
+                            let (xt, alpha) = (x.t(), self.settings.alpha);
+                            $exact_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
                         }
                         RidgeRegressionSolver::QR => {
-                            let (q, r) = match x.qr() {
-                                Ok((q, r)) => (q, r),
-                                Err(error) => return Err(error),
-                            };
-                            self.coef = Some(match r.inv() {
-                                Ok(inv_r) => inv_r.dot(&q.t().dot(y)),
-                                Err(error) => return Err(error),
-                            });
+                            let (xt, alpha) = (x.t(), self.settings.alpha);
+                            $qr_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
                         }
                         RidgeRegressionSolver::SAG => {
                             let (alpha_norm, max_iter, tol, samples, coef, mut gradients) =
                                 self.init_stochastic_algo(x, y);
-                            self.coef = Some($grad(
+                            $grad(
                                 x,
                                 y,
                                 coef,
@@ -347,23 +326,14 @@ macro_rules! impl_ridge_reg {
                                 &samples,
                                 alpha_norm,
                                 ($sag, $norm, tol, &gradients.as_mut()), // use a struct ?
-                            ));
+                            )
                         }
                         RidgeRegressionSolver::CHOLESKY => {
-                            let xt = x.t();
-                            self.coef = Some(
-                                match (xt.dot(x) + self.settings.alpha * Array2::eye(x.ncols()))
-                                    .cholesky(UPLO::Lower)
-                                {
-                                    Ok(mat) => match mat.inv() {
-                                        Ok(inv_m) => inv_m.t().dot(&inv_m).dot(&xt).dot(y),
-                                        Err(error) => return Err(error),
-                                    },
-                                    Err(error) => return Err(error),
-                                },
-                            );
+                            let (xt, alpha) = (x.t(), self.settings.alpha);
+                            $chol_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
                         }
-                    }
+                    };
+                    self.coef = Some(coef);
                 }
                 Ok(())
             }
@@ -391,7 +361,10 @@ impl_ridge_reg!(
     l2_norm1,
     grad_1d,
     sgd_updator,
-    sag_updator
+    sag_updator,
+    solve_exact1,
+    solve_qr1,
+    solve_chol1
 );
 
 impl_ridge_reg!(
@@ -401,7 +374,10 @@ impl_ridge_reg!(
     l2_norm1,
     grad_2d,
     sgd_updator,
-    sag_updator
+    sag_updator,
+    solve_exact2,
+    solve_qr2,
+    solve_chol2
 );
 
 fn sgd_updator<T, X, Y>(

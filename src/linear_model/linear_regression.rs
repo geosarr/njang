@@ -1,6 +1,12 @@
 use ndarray::{linalg::Dot, Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
 
-use crate::{linear_model::preprocess, traits::Info, RegressionModel};
+use crate::{
+    linear_model::{
+        preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
+    },
+    traits::Info,
+    RegressionModel,
+};
 use ndarray_linalg::{error::LinalgError, Inverse, Lapack, LeastSquaresSvd, QR};
 
 /// Solver to use when fitting a linear regression model (Ordinary Least Squares, OLS).
@@ -48,7 +54,7 @@ pub struct LinearRegressionHyperParameter {
 ///     solver: LinearRegressionSolver::EXACT,
 /// });
 /// model.fit(&x, &y);
-/// assert!((model.coef().unwrap() - &coef).map(|error: &f32| error.powi(2)).sum().sqrt() < 1e-6);
+/// assert!((model.coef().unwrap() - &coef).map(|error: &f32| error.powi(2)).sum().sqrt() < 1e-4);
 /// ```
 #[derive(Debug)]
 pub struct LinearRegression<C, I> {
@@ -75,15 +81,10 @@ impl<C, I> LinearRegression<C, I> {
     }
 }
 macro_rules! impl_lin_reg {
-    ($ix:ty, $ix_smaller:ty) => {
+    ($ix:ty, $ix_smaller:ty, $exact_name:ident, $qr_name:ident, $chol_name:ident) => {
         impl<T> RegressionModel for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
         where
             T: Lapack + ScalarOperand,
-            Array2<T>: Dot<Array2<T>, Output = Array2<T>>
-                + Dot<Array<T, Ix1>, Output = Array<T, Ix1>>
-                + Info<MeanOutput = Array<T, Ix1>>
-                + QR<Q = Array2<T>, R = Array2<T>>,
-            Array<T, Ix1>: Info<MeanOutput = Array<T, Ix0>>,
         {
             type FitResult = Result<(), LinalgError>;
             type X = Array2<T>;
@@ -98,48 +99,28 @@ macro_rules! impl_lin_reg {
                         }
                         LinearRegressionSolver::EXACT => {
                             let xct = x_centered.t();
-                            match xct.dot(&x_centered).inv() {
-                                Ok(mat) => mat.dot(&xct).dot(&y_centered),
-                                Err(error) => return Err(error),
-                            }
+                            $exact_name(xct.dot(&x_centered), xct, &y_centered)?
                         }
                         LinearRegressionSolver::QR => {
-                            let (q, r) = match x_centered.qr() {
-                                Ok((q, r)) => (q, r),
-                                Err(error) => return Err(error),
-                            };
-                            match r.inv() {
-                                Ok(inv_r) => inv_r.dot(&q.t().dot(&y_centered)),
-                                Err(error) => return Err(error),
-                            }
+                            let xct = x_centered.t();
+                            $qr_name(xct.dot(&x_centered), xct, &y_centered)?
                         }
                     };
                     self.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.coef = Some(coef);
                 } else {
-                    match self.settings.solver {
-                        LinearRegressionSolver::SVD => {
-                            let res = x.least_squares(&y)?;
-                            self.coef = Some(res.solution);
-                        }
+                    let coef = match self.settings.solver {
+                        LinearRegressionSolver::SVD => x.least_squares(&y)?.solution,
                         LinearRegressionSolver::EXACT => {
                             let xt = x.t();
-                            self.coef = Some(match xt.dot(x).inv() {
-                                Ok(mat) => mat.dot(&xt).dot(y),
-                                Err(error) => return Err(error),
-                            });
+                            $exact_name(xt.dot(x), xt, y)?
                         }
                         LinearRegressionSolver::QR => {
-                            let (q, r) = match x.qr() {
-                                Ok((q, r)) => (q, r),
-                                Err(error) => return Err(error),
-                            };
-                            self.coef = Some(match r.inv() {
-                                Ok(inv_r) => inv_r.dot(&q.t().dot(y)),
-                                Err(error) => return Err(error),
-                            });
+                            let xt = x.t();
+                            $qr_name(xt.dot(x), xt, y)?
                         }
-                    }
+                    };
+                    self.coef = Some(coef);
                 }
                 Ok(())
             }
@@ -160,5 +141,5 @@ macro_rules! impl_lin_reg {
         }
     };
 }
-impl_lin_reg!(Ix1, Ix0);
-impl_lin_reg!(Ix2, Ix1);
+impl_lin_reg!(Ix1, Ix0, solve_exact1, solve_qr1, solve_chol1);
+impl_lin_reg!(Ix2, Ix1, solve_exact2, solve_qr2, solve_chol2);

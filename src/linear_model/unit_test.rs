@@ -141,7 +141,12 @@ mod tests {
     #[allow(unused)]
     fn ridge_one_reg(intercept: f32, tol: f32) {
         let (x, y, coef) = one_reg_dataset(intercept);
-        let solvers = [RidgeRegressionSolver::EXACT, RidgeRegressionSolver::SGD];
+        let solvers = [
+            RidgeRegressionSolver::EXACT,
+            RidgeRegressionSolver::SGD,
+            RidgeRegressionSolver::QR,
+            RidgeRegressionSolver::CHOLESKY,
+        ];
         for solver in solvers {
             let mut model =
                 RidgeRegression::<Array1<_>, Array0<_>>::new(RidgeRegressionHyperParameter {

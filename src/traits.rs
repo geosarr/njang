@@ -1,8 +1,8 @@
 use core::ops::Mul;
-use ndarray::{Array1, Array2, ScalarOperand};
+use core::ops::Not;
+use ndarray::{linalg::Dot, Array1, Array2, ArrayView2, ScalarOperand};
 use ndarray_linalg::{Cholesky, Inverse, Lapack, QR};
 use num_traits::{Float, FromPrimitive};
-
 /// Implements classic steps of a regression model.
 pub trait RegressionModel {
     type X;
@@ -71,12 +71,20 @@ macro_rules! impl_scalar {
 impl_scalar!(f32);
 impl_scalar!(f64);
 
-pub(crate) trait Linalg
-where
-    Self: Inverse<Output = Self> + QR<Q = Self, R = Self> + Cholesky<Output = Self>,
+pub(crate) trait Linalg:
+    Inverse<Output = Self>
+    + QR<Q = Self, R = Self>
+    + Cholesky<Output = Self>
+    + Dot<Self, Output = Self>
+    + Sized
 {
 }
 impl<T> Linalg for Array2<T> where
-    Self: Inverse<Output = Self> + QR<Q = Self, R = Self> + Cholesky<Output = Self>
+    for<'a> Self: Inverse<Output = Self>
+        + QR<Q = Self, R = Self>
+        + Cholesky<Output = Self>
+        + Dot<Self, Output = Self> // + Dot<ArrayView2<'a, T>, Output = Self>
+                                   // + Sized
+                                   // for<'a> ArrayView2<'a, T>: Not + Dot<Self, Output = Self>,
 {
 }

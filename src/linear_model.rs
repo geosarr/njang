@@ -1,14 +1,15 @@
 mod linear_regression;
 mod ridge_regression;
 mod unit_test;
-use core::ops::{Add, Div, Sub};
+use core::ops::{Add, Div, Not, Sub};
 extern crate alloc;
-use crate::traits::Info;
+use crate::traits::{Info, Linalg};
 use alloc::vec::Vec;
 pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
 };
-use ndarray::{Array, Array1, Axis, Ix0, Ix1, Ix2};
+use ndarray::{linalg::Dot, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2, ScalarOperand};
+use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
     rand::{distributions::Distribution, Rng},
     rand_distr::StandardNormal,
@@ -31,6 +32,59 @@ where
     let y_centered = y - &y_mean;
     (x_centered, x_mean, y_centered, y_mean)
 }
+
+macro_rules! impl_linalg {
+    ($exact_name:ident, $qr_name:ident, $chol_name:ident, $ix:ty) => {
+        pub(crate) fn $exact_name<T>(
+            x: Array2<T>,
+            z: ArrayView2<T>,
+            y: &Array<T, $ix>,
+        ) -> Result<Array<T, $ix>, LinalgError>
+        where
+            T: Lapack,
+        {
+            match x.inv() {
+                Ok(mat) => Ok(mat.dot(&z).dot(y)),
+                Err(error) => Err(error),
+            }
+        }
+        pub(crate) fn $qr_name<T>(
+            x: Array2<T>,
+            z: ArrayView2<T>,
+            y: &Array<T, $ix>,
+        ) -> Result<Array<T, $ix>, LinalgError>
+        where
+            T: Lapack,
+        {
+            match x.qr() {
+                Ok((q, r)) => match r.inv() {
+                    Ok(inv_r) => Ok(inv_r.dot(&q.t().dot(&z).dot(y))),
+                    Err(error) => Err(error),
+                },
+                Err(error) => Err(error),
+            }
+        }
+        pub(crate) fn $chol_name<T>(
+            x: Array2<T>,
+            z: ArrayView2<T>,
+            y: &Array<T, $ix>,
+        ) -> Result<Array<T, $ix>, LinalgError>
+        where
+            T: Lapack,
+        {
+            match x.cholesky(UPLO::Lower) {
+                Ok(mat) => match mat.inv() {
+                    Ok(inv_m) => Ok(inv_m.t().dot(&inv_m).dot(&z).dot(y)),
+                    Err(error) => Err(error),
+                },
+                Err(error) => Err(error),
+            }
+        }
+    };
+}
+impl_linalg!(solve_exact1, solve_qr1, solve_chol1, Ix1);
+impl_linalg!(solve_exact2, solve_qr2, solve_chol2, Ix2);
+// pub(crate) fn cholesky<T>(x: &Array2<T>, y: &Y) {}
 
 pub(crate) fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>
 where
