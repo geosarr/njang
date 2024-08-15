@@ -70,21 +70,3 @@ macro_rules! impl_scalar {
 }
 impl_scalar!(f32);
 impl_scalar!(f64);
-
-pub(crate) trait Linalg:
-    Inverse<Output = Self>
-    + QR<Q = Self, R = Self>
-    + Cholesky<Output = Self>
-    + Dot<Self, Output = Self>
-    + Sized
-{
-}
-impl<T> Linalg for Array2<T> where
-    for<'a> Self: Inverse<Output = Self>
-        + QR<Q = Self, R = Self>
-        + Cholesky<Output = Self>
-        + Dot<Self, Output = Self> // + Dot<ArrayView2<'a, T>, Output = Self>
-                                   // + Sized
-                                   // for<'a> ArrayView2<'a, T>: Not + Dot<Self, Output = Self>,
-{
-}

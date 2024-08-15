@@ -3,7 +3,7 @@ mod ridge_regression;
 mod unit_test;
 use core::ops::{Add, Div, Not, Sub};
 extern crate alloc;
-use crate::traits::{Info, Linalg};
+use crate::traits::Info;
 use alloc::vec::Vec;
 pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,

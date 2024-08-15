@@ -1,6 +1,6 @@
 use crate::l2_norm1;
 use crate::linear_model::{randn_1d, randn_2d};
-use crate::traits::{Linalg, Scalar};
+use crate::traits::Scalar;
 use crate::RegressionModel;
 use crate::{
     linear_model::{
@@ -160,10 +160,7 @@ macro_rules! impl_ridge_reg {
                 y: &Array<T, $ix>,
             ) -> (T, usize, T, Array1<usize>, Array<T, $ix>, Option<Array2<T>>)
             where
-                for<'a> T: Lapack
-                    + Clone
-                    + Mul<&'a Array<T, Ix2>, Output = Array<T, Ix2>>
-                    + Mul<&'a Array<T, Ix1>, Output = Array<T, Ix1>>,
+                for<'a> T: Scalar<Array2<T>> + Scalar<Array1<T>>,
                 StandardNormal: Distribution<T>,
             {
                 let mut rng =
@@ -218,17 +215,6 @@ macro_rules! impl_ridge_reg {
         impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T>
         where
             T: Scalar<Array2<T>> + Scalar<Array1<T>>,
-            Array1<T>: Info<MeanOutput = Array0<T>, RowOutput = T>,
-            Array2<T>: Info<
-                    MeanOutput = Array1<T>,
-                    RowOutput = Array1<T>,
-                    ColOutput = Array1<T>,
-                    ColMut = Array1<T>,
-                    NcolsOutput = usize,
-                    NrowsOutput = usize,
-                > + Dot<Array1<T>, Output = Array1<T>>
-                + Dot<Array2<T>, Output = Array2<T>>
-                + Linalg,
             StandardNormal: Distribution<T>,
         {
             type FitResult = Result<(), LinalgError>;
