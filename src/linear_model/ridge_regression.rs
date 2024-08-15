@@ -160,7 +160,7 @@ macro_rules! impl_ridge_reg {
                 y: &Array<T, $ix>,
             ) -> (T, usize, T, Array1<usize>, Array<T, $ix>, Option<Array2<T>>)
             where
-                for<'a> T: Scalar<Array2<T>> + Scalar<Array1<T>>,
+                T: Scalar<Array2<T>> + Scalar<Array1<T>>,
                 StandardNormal: Distribution<T>,
             {
                 let mut rng =
