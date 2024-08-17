@@ -428,7 +428,7 @@ where
     let gradi = alpha * coef + (xi.dot(coef) - yi) * xi;
     // Safe to .unwrap() ?
     let scale = T::from_f32(1. / (x.get_nrows() as f32)).unwrap();
-    let update = if let Some(grad) = gradients {
+    if let Some(grad) = gradients {
         let pre_update = scale * (&gradi - grad.get_row(i)) + grad.mean();
         if let Some(lamb) = lambda {
             lamb * pre_update
@@ -437,12 +437,11 @@ where
         }
     } else {
         panic!("No gradients provided");
-    };
+    }
     // TODO update gradients
     // if let Some(grad) = gradients {
     //     (*grad).col_mut(i, gradi); // To change to row_mut;
     // }
-    update
 }
 
 fn grad_1d<T, X, Y, U, N>(

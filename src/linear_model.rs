@@ -1,7 +1,7 @@
 mod linear_regression;
 mod ridge_regression;
 mod unit_test;
-use core::ops::{Add, Div, Not, Sub};
+use core::ops::{Add, Div, Sub};
 extern crate alloc;
 use crate::traits::Info;
 use alloc::vec::Vec;
