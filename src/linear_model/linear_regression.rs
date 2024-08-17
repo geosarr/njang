@@ -1,15 +1,14 @@
-use ndarray::{linalg::Dot, Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
-
 use crate::{
     linear_model::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
-    traits::Info,
     RegressionModel,
 };
-use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd, QR};
+use ndarray::{Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
+use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
 
-/// Solver to use when fitting a linear regression model (Ordinary Least Squares, OLS).
+/// Solver to use when fitting a linear regression model (Ordinary Least
+/// Squares, OLS).
 #[derive(Debug, Default)]
 pub enum LinearRegressionSolver {
     /// Solves the problem using Singular Value Decomposition
@@ -26,7 +25,8 @@ pub enum LinearRegressionSolver {
 
 /// Hyperparameters used in a linear regression model
 ///
-/// - **fit_intercept**: `true` means fit with an intercept, `false` without an intercept.
+/// - **fit_intercept**: `true` means fit with an intercept, `false` without an
+///   intercept.
 /// - **solver**: optimization method see [`LinearRegressionSolver`].
 #[derive(Debug, Default)]
 pub struct LinearRegressionHyperParameter {
@@ -36,14 +36,17 @@ pub struct LinearRegressionHyperParameter {
 
 /// Ordinary Least Squares (OLS).
 ///
-/// Minimization of the L2-norm `||Xb - Y||`<sup/>2</sup> with respect to `b`, for regressors/predictors `X` and targets `Y`.
+/// Minimization of the L2-norm `||Xb - Y||`<sup/>2</sup> with respect to `b`,
+/// for regressors/predictors `X` and targets `Y`.
 ///
 /// The vector of coefficients satisfies:
 /// - if `self.fit_intercept = false`, then `Xb = X*self.coef`
 /// - if `self.fit_intercept = true`, then `Xb = X*self.coef + self.intercept`.
 ///
-/// It is able to fit at once many regressions with the same input regressors `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate.
-/// The same hyperparameter `fit_intercept` applies for all regressions involved.
+/// It is able to fit at once many regressions with the same input regressors
+/// `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate.
+/// The same hyperparameter `fit_intercept` applies for all regressions
+/// involved.
 /// ```
 /// use ndarray::{array, Array1, Array2};
 /// use njang::{

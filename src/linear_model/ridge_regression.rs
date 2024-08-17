@@ -13,8 +13,8 @@ use core::{
     marker::{Send, Sync},
     ops::{Add, Mul, Sub},
 };
-use ndarray::{linalg::Dot, s, Array, Array0, Array1, Array2, Ix0, Ix1, Ix2};
-use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
+use ndarray::{linalg::Dot, s, Array, Array1, Array2, Ix0, Ix1, Ix2};
+use ndarray_linalg::error::LinalgError;
 use ndarray_rand::{
     rand::{distributions::Distribution, SeedableRng},
     rand_distr::{StandardNormal, Uniform},
@@ -23,39 +23,48 @@ use ndarray_rand::{
 use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
 
-/// Solver to use when fitting a ridge regression model (L2-penalty with Ordinary Least Squares).
+/// Solver to use when fitting a ridge regression model (L2-penalty with
+/// Ordinary Least Squares).
 ///
-/// Here `alpha` is the magnitude of the penalty and `eye` is the identity matrix.
+/// Here `alpha` is the magnitude of the penalty and `eye` is the identity
+/// matrix.
 #[derive(Debug, Default)]
 pub enum RidgeRegressionSolver {
     /// Solves the problem using Stochastic Gradient Descent
     ///
-    /// Make sure to standardize the input predictors, otherwise the algorithm may not converge.
+    /// Make sure to standardize the input predictors, otherwise the algorithm
+    /// may not converge.
     #[default]
     SGD,
     /// Computes the solution:
     /// - `(x.t().dot(x) + alpha * eye).inverse().dot(x.t().dot(y))`
     EXACT,
-    /// Uses QR decomposition of the matrix `x.t().dot(x) + alpha * eye` to solve the problem:
-    /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to `coef`
+    /// Uses QR decomposition of the matrix `x.t().dot(x) + alpha * eye` to
+    /// solve the problem:
+    /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to
+    ///   `coef`
     QR,
     /// Solves the problem using Stochastic Average Gradient
     ///
-    /// Make sure to standardize the input predictors, otherwise the algorithm may not converge.
+    /// Make sure to standardize the input predictors, otherwise the algorithm
+    /// may not converge.
     SAG,
-    /// Uses Cholesky decomposition of the matrix `x.t().dot(x) + alpha * eye` to solve the problem:
-    /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to `coef`
+    /// Uses Cholesky decomposition of the matrix `x.t().dot(x) + alpha * eye`
+    /// to solve the problem:
+    /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to
+    ///   `coef`
     CHOLESKY,
 }
 
 /// Hyperparameters used in a Ridge regression.
 ///
 /// - **alpha**: L2-norm penalty magnitude.
-/// - **fit_intercept**: `true` means fit with an intercept, `false` without an intercept.
+/// - **fit_intercept**: `true` means fit with an intercept, `false` without an
+///   intercept.
 /// - **solver**: optimization method see [`RidgeRegressionSolver`].
 /// - **tol**: tolerance parameter:
-///     - stochastic optimization solvers (like SGD) stop when the relative variation
-///       of consecutive iterates is lower than **tol**:
+///     - stochastic optimization solvers (like SGD) stop when the relative
+///       variation of consecutive iterates is lower than **tol**:
 ///         - `||coef_next - coef_curr|| <= tol * ||coef_curr||`
 ///     - No impact on the other algorithms.
 /// - **random_state**: seed of random generators.
@@ -114,7 +123,8 @@ pub struct RidgeRegression<C, I, T = f32> {
 impl<C, I, T> RidgeRegression<C, I, T> {
     /// Creates a new instance of `Self`.
     ///
-    /// See also: [RidgeRegressionHyperParameter], [RidgeRegressionSolver], [RegressionModel].
+    /// See also: [RidgeRegressionHyperParameter], [RidgeRegressionSolver],
+    /// [RegressionModel].
     /// ```
     /// use ndarray::{array, Array0, Array1};
     /// use njang::{
@@ -261,7 +271,7 @@ macro_rules! impl_ridge_reg {
                             )?
                         }
                         RidgeRegressionSolver::SAG => {
-                            let (alpha_norm, max_iter, tol, samples, coef, gradients) =
+                            let (alpha_norm, max_iter, tol, samples, coef, _gradients) =
                                 self.init_stochastic_algo(x, y);
                             $grad(
                                 &x_centered,

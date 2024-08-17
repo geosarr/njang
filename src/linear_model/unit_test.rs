@@ -239,7 +239,7 @@ mod tests {
             warm_start: false,
         });
         let _ = ridge.fit(&x, &y);
-        // let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(), ridge.intercept());
-        // println!("{:?}", fitted_coef);
+        // let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(),
+        // ridge.intercept()); println!("{:?}", fitted_coef);
     }
 }

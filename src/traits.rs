@@ -1,7 +1,6 @@
 use core::ops::Mul;
-use core::ops::Not;
-use ndarray::{linalg::Dot, Array1, Array2, ScalarOperand};
-use ndarray_linalg::{Cholesky, Inverse, Lapack, QR};
+use ndarray::{Array1, Array2, ScalarOperand};
+use ndarray_linalg::Lapack;
 use num_traits::{Float, FromPrimitive};
 /// Implements classic steps of a regression model.
 pub trait RegressionModel {
@@ -35,13 +34,15 @@ pub trait Info {
     type ColMut;
     type NcolsOutput;
     type NrowsOutput;
-    /// Mean of each column for 2d containers and mean of all elements for 1d containers.
+    /// Mean of each column for 2d containers and mean of all elements for 1d
+    /// containers.
     fn mean(&self) -> Self::MeanOutput;
     /// Like copy, view of a "row".
     fn get_row(&self, i: usize) -> Self::RowOutput;
     /// Like copy, view of a "column".
     fn get_col(&self, i: usize) -> Self::ColOutput;
-    /// Like a pair (number of rows, number of columns) for 2d containers and (n_elements) for 1d containers.
+    /// Like a pair (number of rows, number of columns) for 2d containers and
+    /// (n_elements) for 1d containers.
     fn shape(&self) -> Self::ShapeOutput;
     /// Mutate column number idx of a 2d container with elem.
     fn col_mut(&mut self, idx: usize, elem: Self::ColMut);
