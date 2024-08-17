@@ -25,7 +25,7 @@ use rand_chacha::ChaCha20Rng;
 
 /// Solver to use when fitting a ridge regression model (L2-penalty with Ordinary Least Squares).
 ///
-/// Here `alpha` is the magnitude of the penalty.
+/// Here `alpha` is the magnitude of the penalty and `eye` is the identity matrix.
 #[derive(Debug, Default)]
 pub enum RidgeRegressionSolver {
     /// Solves the problem using Stochastic Gradient Descent
@@ -40,6 +40,8 @@ pub enum RidgeRegressionSolver {
     /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to `coef`
     QR,
     /// Solves the problem using Stochastic Average Gradient
+    ///
+    /// Make sure to standardize the input predictors, otherwise the algorithm may not converge.
     SAG,
     /// Uses Cholesky decomposition of the matrix `x.t().dot(x) + alpha * eye` to solve the problem:
     /// - `(x.t().dot(x) + alpha * eye) * coef = x.t().dot(y)` with respect to `coef`
@@ -52,8 +54,9 @@ pub enum RidgeRegressionSolver {
 /// - **fit_intercept**: `true` means fit with an intercept, `false` without an intercept.
 /// - **solver**: optimization method see [`RidgeRegressionSolver`].
 /// - **tol**: tolerance parameter:
-///     - stochastic algorithms (like SGD) stop when the relative variation of consecutive
-///       iterates L2-norms is lower than **tol**.
+///     - stochastic optimization solvers (like SGD) stop when the relative variation
+///       of consecutive iterates is lower than **tol**:
+///         - `||coef_next - coef_curr|| <= tol * ||coef_curr||`
 ///     - No impact on the other algorithms.
 /// - **random_state**: seed of random generators.
 /// - **max_iter**: maximum number of iterations.
@@ -86,6 +89,7 @@ where
     }
 }
 impl<T> RidgeRegressionHyperParameter<T> {
+    /// Creates a new instance of EXACT solver.
     pub fn new_exact(alpha: T, fit_intercept: bool) -> Self {
         Self {
             alpha,
@@ -112,11 +116,13 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     ///
     /// See also: [RidgeRegressionHyperParameter], [RidgeRegressionSolver], [RegressionModel].
     /// ```
-    /// use njang::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver, RegressionModel};
-    /// use ndarray::{Array1, Array0, array};
+    /// use ndarray::{array, Array0, Array1};
+    /// use njang::{
+    ///     RegressionModel, RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver,
+    /// };
     /// // Initial model
-    /// let mut model = RidgeRegression::<Array1<f32>, Array0<f32>, f32>::new(
-    ///     RidgeRegressionHyperParameter{
+    /// let mut model =
+    ///     RidgeRegression::<Array1<f32>, Array0<f32>, f32>::new(RidgeRegressionHyperParameter {
     ///         alpha: 0.01,
     ///         tol: Some(0.0001),
     ///         solver: RidgeRegressionSolver::SGD,
@@ -124,7 +130,7 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     ///         random_state: Some(123),
     ///         max_iter: Some(1),
     ///         warm_start: true,
-    /// });
+    ///     });
     /// // Dataset
     /// let x0 = array![[1., 2.], [-3., -4.], [0., 7.], [-2., 5.]];
     /// let y0 = array![0.5, -1., 2., 3.5];

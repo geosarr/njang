@@ -46,17 +46,26 @@ pub struct LinearRegressionHyperParameter {
 /// The same hyperparameter `fit_intercept` applies for all regressions involved.
 /// ```
 /// use ndarray::{array, Array1, Array2};
-/// use njang::{LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver, RegressionModel};
+/// use njang::{
+///     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver, RegressionModel,
+/// };
 /// let x = array![[0., 1.], [1., -1.], [-2., 3.]];
 /// let coef = array![[10., 30.], [20., 40.]];
 /// let y = x.dot(&coef) + 1.;
 /// // multiple linear regression models with intercept.
-/// let mut model = LinearRegression::<Array2<f32>, Array1<f32>>::new(LinearRegressionHyperParameter {
-///     fit_intercept: true,
-///     solver: LinearRegressionSolver::EXACT,
-/// });
+/// let mut model =
+///     LinearRegression::<Array2<f32>, Array1<f32>>::new(LinearRegressionHyperParameter {
+///         fit_intercept: true,
+///         solver: LinearRegressionSolver::EXACT,
+///     });
 /// model.fit(&x, &y);
-/// assert!((model.coef().unwrap() - &coef).map(|error: &f32| error.powi(2)).sum().sqrt() < 1e-4);
+/// assert!(
+///     (model.coef().unwrap() - &coef)
+///         .map(|error: &f32| error.powi(2))
+///         .sum()
+///         .sqrt()
+///         < 1e-4
+/// );
 /// ```
 #[derive(Debug)]
 pub struct LinearRegression<C, I> {
