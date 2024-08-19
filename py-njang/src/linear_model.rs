@@ -8,8 +8,10 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 
 #[pyclass]
 pub struct LinearRegression {
-    reg: RidgeRegression1d,
-    // reg_2d: RidgeRegression,
+    reg_1d: RidgeRegression1d,
+    reg_2d: RidgeRegression2d,
+    fitted_1d: bool,
+    fitted_2d: bool,
 }
 
 #[pymethods]
@@ -23,9 +25,10 @@ impl LinearRegression {
         random_state: Option<u32>,
         warm_start: Option<bool>,
     ) -> PyResult<Self> {
-        // RidgeRegression seems to be faster than plain LinearRegression when penalty is set to 0., why ?
+        // RidgeRegression seems to be faster than plain LinearRegression when penalty
+        // is set to 0., why ?
         Ok(Self {
-            reg: RidgeRegression1d::new(
+            reg_1d: RidgeRegression1d::new(
                 0.,
                 fit_intercept,
                 max_iter,
@@ -34,18 +37,59 @@ impl LinearRegression {
                 random_state,
                 warm_start,
             )?,
+            reg_2d: RidgeRegression2d::new(
+                0.,
+                fit_intercept,
+                max_iter,
+                tol,
+                solver,
+                random_state,
+                warm_start,
+            )?,
+            fitted_1d: false,
+            fitted_2d: false,
         })
     }
-    pub fn fit(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray1<f64>) -> PyResult<()> {
-        self.reg.fit(x, y)
+    pub fn fit<'py>(
+        &mut self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<f64>,
+        y: PyObject,
+    ) -> PyResult<()> {
+        let dimension = y
+            .getattr(py, "shape")?
+            .call_method0(py, "__len__")?
+            .extract::<usize>(py)?;
+        if dimension == 1 {
+            self.reg_1d.fit(x, y.extract::<PyReadonlyArray1<f64>>(py)?);
+            self.fitted_1d = true;
+            self.fitted_2d = false
+        } else {
+            self.reg_2d.fit(x, y.extract::<PyReadonlyArray2<f64>>(py)?);
+            self.fitted_2d = true;
+            self.fitted_1d = false
+        }
+        Ok(())
     }
     #[getter]
-    pub fn intercept<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray0<f64>>> {
-        self.reg.intercept(py)
+    pub fn intercept<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        if self.fitted_1d {
+            let val = self.reg_1d.intercept(py)?;
+            Ok(val.as_any().clone())
+        } else {
+            let val = self.reg_2d.intercept(py)?;
+            Ok(val.as_any().clone())
+        }
     }
     #[getter]
-    pub fn coef<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        self.reg.coef(py)
+    pub fn coef<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        if self.fitted_1d {
+            let val = self.reg_1d.coef(py)?;
+            Ok(val.as_any().clone())
+        } else {
+            let val = self.reg_2d.coef(py)?;
+            Ok(val.as_any().clone())
+        }
     }
 }
 
@@ -92,48 +136,45 @@ impl RidgeRegression {
             fitted_2d: false,
         })
     }
-    pub fn fit_1d(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray1<f64>) -> PyResult<()> {
-        let _ = self.reg_1d.fit(x, y);
-        self.fitted_1d = true;
-        self.fitted_2d = false;
+    pub fn fit<'py>(
+        &mut self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<f64>,
+        y: PyObject,
+    ) -> PyResult<()> {
+        let dimension = y
+            .getattr(py, "shape")?
+            .call_method0(py, "__len__")?
+            .extract::<usize>(py)?;
+        if dimension == 1 {
+            self.reg_1d.fit(x, y.extract::<PyReadonlyArray1<f64>>(py)?);
+            self.fitted_1d = true;
+            self.fitted_2d = false
+        } else {
+            self.reg_2d.fit(x, y.extract::<PyReadonlyArray2<f64>>(py)?);
+            self.fitted_2d = true;
+            self.fitted_1d = false
+        }
         Ok(())
     }
-    pub fn fit_2d(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-        let _ = self.reg_2d.fit(x, y);
-        self.fitted_2d = true;
-        self.fitted_1d = false;
-        Ok(())
-    }
     #[getter]
-    pub fn intercept_1d<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray0<f64>>> {
+    pub fn intercept<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         if self.fitted_1d {
-            self.reg_1d.intercept(py)
+            let val = self.reg_1d.intercept(py)?;
+            Ok(val.as_any().clone())
         } else {
-            Err(PyValueError::new_err("no intercept"))
+            let val = self.reg_2d.intercept(py)?;
+            Ok(val.as_any().clone())
         }
     }
     #[getter]
-    pub fn intercept_2d<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        if self.fitted_2d {
-            self.reg_2d.intercept(py)
-        } else {
-            Err(PyValueError::new_err("no intercept"))
-        }
-    }
-    #[getter]
-    pub fn coef_1d<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    pub fn coef<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         if self.fitted_1d {
-            self.reg_1d.coef(py)
+            let val = self.reg_1d.coef(py)?;
+            Ok(val.as_any().clone())
         } else {
-            Err(PyValueError::new_err("no coef"))
-        }
-    }
-    #[getter]
-    pub fn coef_2d<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
-        if self.fitted_2d {
-            self.reg_2d.coef(py)
-        } else {
-            Err(PyValueError::new_err("no coef"))
+            let val = self.reg_2d.coef(py)?;
+            Ok(val.as_any().clone())
         }
     }
 }
