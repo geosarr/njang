@@ -8,10 +8,7 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 
 #[pyclass]
 pub struct LinearRegression {
-    reg_1d: RidgeRegression1d,
-    reg_2d: RidgeRegression2d,
-    fitted_1d: bool,
-    fitted_2d: bool,
+    reg: RidgeRegression,
 }
 
 #[pymethods]
@@ -28,7 +25,7 @@ impl LinearRegression {
         // RidgeRegression seems to be faster than plain LinearRegression when penalty
         // is set to 0., why ?
         Ok(Self {
-            reg_1d: RidgeRegression1d::new(
+            reg: RidgeRegression::new(
                 0.,
                 fit_intercept,
                 max_iter,
@@ -37,17 +34,6 @@ impl LinearRegression {
                 random_state,
                 warm_start,
             )?,
-            reg_2d: RidgeRegression2d::new(
-                0.,
-                fit_intercept,
-                max_iter,
-                tol,
-                solver,
-                random_state,
-                warm_start,
-            )?,
-            fitted_1d: false,
-            fitted_2d: false,
         })
     }
     pub fn fit<'py>(
@@ -56,40 +42,15 @@ impl LinearRegression {
         x: PyReadonlyArray2<f64>,
         y: PyObject,
     ) -> PyResult<()> {
-        let dimension = y
-            .getattr(py, "shape")?
-            .call_method0(py, "__len__")?
-            .extract::<usize>(py)?;
-        if dimension == 1 {
-            self.reg_1d.fit(x, y.extract::<PyReadonlyArray1<f64>>(py)?);
-            self.fitted_1d = true;
-            self.fitted_2d = false
-        } else {
-            self.reg_2d.fit(x, y.extract::<PyReadonlyArray2<f64>>(py)?);
-            self.fitted_2d = true;
-            self.fitted_1d = false
-        }
-        Ok(())
+        self.reg.fit(py, x, y)
     }
     #[getter]
     pub fn intercept<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        if self.fitted_1d {
-            let val = self.reg_1d.intercept(py)?;
-            Ok(val.as_any().clone())
-        } else {
-            let val = self.reg_2d.intercept(py)?;
-            Ok(val.as_any().clone())
-        }
+        self.reg.intercept(py)
     }
     #[getter]
     pub fn coef<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        if self.fitted_1d {
-            let val = self.reg_1d.coef(py)?;
-            Ok(val.as_any().clone())
-        } else {
-            let val = self.reg_2d.coef(py)?;
-            Ok(val.as_any().clone())
-        }
+        self.reg.coef(py)
     }
 }
 
