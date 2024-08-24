@@ -1,14 +1,14 @@
 mod linear_regression;
 mod ridge_regression;
 mod unit_test;
-use core::ops::{Add, Div, Sub};
+use core::ops::{Add, Div, Mul, Sub};
 extern crate alloc;
 use crate::traits::Info;
 use alloc::vec::Vec;
 pub use linear_regression::{
     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
 };
-use ndarray::{Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
+use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
     rand::{distributions::Distribution, Rng},
@@ -99,6 +99,59 @@ where
     Array::<T, Ix2>::random_using((n, m[1]), StandardNormal, rng)
 }
 
+pub(crate) fn init_grad_1d<T>(
+    x: &Array2<T>,
+    y: &Array1<T>,
+    mut grad: Array2<T>,
+    coef: &Array1<T>,
+    alpha: T,
+) -> (Array2<T>, Array1<T>)
+where
+    for<'a> T: Lapack + Mul<Array1<T>, Output = Array1<T>> + Mul<&'a Array1<T>, Output = Array1<T>>,
+{
+    for k in 0..x.nrows() {
+        let xi = x.row(k);
+        let yi = y[k];
+        (alpha * coef + (xi.dot(coef) - yi) * xi.to_owned()).assign_to(grad.slice_mut(s!(k, ..)));
+    }
+    let sum_grad = grad.sum_axis(Axis(0));
+    return (grad, sum_grad);
+}
+
+pub(crate) fn init_grad_2d<T>(
+    x: &Array2<T>,
+    y: &Array2<T>,
+    mut grad: Array2<T>,
+    coef: &Array2<T>,
+    alpha: T,
+) -> (Array2<T>, Array2<T>)
+where
+    for<'a> T: Lapack
+        + Mul<Array1<T>, Output = Array1<T>>
+        + Mul<&'a Array2<T>, Output = Array2<T>>
+        + Mul<&'a Array1<T>, Output = Array1<T>>,
+{
+    let (n_samples, n_regressions) = (x.nrows(), y.ncols());
+    for k in 0..n_samples {
+        let xi = x.row(k).to_owned();
+        let yi = y.row(k);
+        let error = xi.dot(coef) - yi;
+        let grad_norm = alpha * coef;
+        for r in 0..n_regressions {
+            let start = r * n_samples;
+            (grad_norm.column(r).to_owned() + error[r] * &xi)
+                .assign_to(grad.slice_mut(s!(start + k, ..)));
+        }
+    }
+    let mut sum_grad = Array2::<T>::zeros((n_regressions, x.ncols()));
+    for r in 0..n_regressions {
+        grad.slice(s!(r * n_samples..(r + 1) * n_samples, ..))
+            .sum_axis(Axis(0))
+            .assign_to(sum_grad.slice_mut(s!(r, ..)));
+    }
+    return (grad, sum_grad);
+}
+
 impl<T> Info for Array<T, Ix1>
 where
     T: Copy + Zero + FromPrimitive + Add<Output = T> + Div<Output = T>,
@@ -108,8 +161,10 @@ where
     type ColOutput = T;
     type ShapeOutput = Vec<usize>;
     type ColMut = ();
+    type RowMut = ();
     type NcolsOutput = ();
     type NrowsOutput = ();
+    type SliceRowOutput = ();
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
@@ -123,6 +178,8 @@ where
         Array::<T, Ix1>::shape(self).into()
     }
     fn col_mut(&mut self, _idx: usize, _elem: ()) {}
+    fn row_mut(&mut self, _idx: usize, _elem: ()) {}
+    fn slice_row(&self, _start: usize, _end: usize) {}
     fn get_ncols(&self) {}
     fn get_nrows(&self) {}
 }
@@ -136,8 +193,10 @@ where
     type ColOutput = Array<T, Ix1>;
     type ShapeOutput = Vec<usize>;
     type ColMut = Array1<T>;
+    type RowMut = Array1<T>;
     type NcolsOutput = usize;
     type NrowsOutput = usize;
+    type SliceRowOutput = Array2<T>;
     fn mean(&self) -> Self::MeanOutput {
         self.mean_axis(Axis(0)).unwrap()
     }
@@ -152,6 +211,12 @@ where
     }
     fn col_mut(&mut self, idx: usize, elem: Self::ColMut) {
         self.column_mut(idx).assign(&elem);
+    }
+    fn row_mut(&mut self, idx: usize, elem: Self::RowMut) {
+        self.row_mut(idx).assign(&elem);
+    }
+    fn slice_row(&self, start: usize, end: usize) -> Self::SliceRowOutput {
+        self.slice(s![start..end, ..]).to_owned()
     }
     fn get_ncols(&self) -> Self::NcolsOutput {
         self.ncols()

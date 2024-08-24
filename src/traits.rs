@@ -32,8 +32,10 @@ pub trait Info {
     type ColOutput;
     type ShapeOutput;
     type ColMut;
+    type RowMut;
     type NcolsOutput;
     type NrowsOutput;
+    type SliceRowOutput;
     /// Mean of each column for 2d containers and mean of all elements for 1d
     /// containers.
     fn mean(&self) -> Self::MeanOutput;
@@ -46,6 +48,10 @@ pub trait Info {
     fn shape(&self) -> Self::ShapeOutput;
     /// Mutate column number idx of a 2d container with elem.
     fn col_mut(&mut self, idx: usize, elem: Self::ColMut);
+    /// Mutate row number idx of a 2d container with elem.
+    fn row_mut(&mut self, idx: usize, elem: Self::RowMut);
+    /// Slices rows of a matrix, taking all columns
+    fn slice_row(&self, start: usize, end: usize) -> Self::SliceRowOutput;
     /// Number of columns for 2d containers.
     fn get_ncols(&self) -> Self::NcolsOutput;
     /// Number of rows for 2d containers.

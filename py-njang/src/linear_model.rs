@@ -108,11 +108,11 @@ impl RidgeRegression {
             .call_method0(py, "__len__")?
             .extract::<usize>(py)?;
         if dimension == 1 {
-            self.reg_1d.fit(x, y.extract::<PyReadonlyArray1<f64>>(py)?);
+            let _ = self.reg_1d.fit(x, y.extract::<PyReadonlyArray1<f64>>(py)?);
             self.fitted_1d = true;
             self.fitted_2d = false
         } else {
-            self.reg_2d.fit(x, y.extract::<PyReadonlyArray2<f64>>(py)?);
+            let _ = self.reg_2d.fit(x, y.extract::<PyReadonlyArray2<f64>>(py)?);
             self.fitted_2d = true;
             self.fitted_1d = false
         }
@@ -167,6 +167,8 @@ macro_rules! impl_ridge_reg {
                         RidgeRegressionSolver::QR
                     } else if solvr == "cholesky" {
                         RidgeRegressionSolver::CHOLESKY
+                    } else if solvr == "sag" {
+                        RidgeRegressionSolver::SAG
                     } else {
                         return Err(PyValueError::new_err(format!(
                             "solver `{}` not supported",

@@ -219,27 +219,23 @@ mod tests {
     }
 
     #[test]
-    fn test_sag() {
-        let intercept = 0.;
-        let (x, y, _coef) = one_reg_dataset(intercept);
-        // use ndarray_linalg::{Cholesky, UPLO};
-        // let xtx = x.t().dot(&x);
-        // let l = xtx.cholesky(UPLO::Lower).unwrap();
-        // println!("{:?}", xtx);
-        // println!("{:?}", l);
-        // println!("{:?}", l.dot(&l.t()));
-        let mut ridge = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionHyperParameter {
-            // Some attributes are not needed for EXACT solver
+    fn test_ridge_sag() {
+        let intercept = 2.;
+        let (x, y, coef) = multi_reg_dataset(intercept);
+        let mut ridge = RidgeRegression::<Array2<_>, _>::new(RidgeRegressionHyperParameter {
             alpha: 0.,
             tol: Some(1e-10),
-            solver: RidgeRegressionSolver::CHOLESKY,
+            solver: RidgeRegressionSolver::SAG,
             fit_intercept: intercept.abs() > 0.,
             random_state: None,
-            max_iter: Some(1),
+            max_iter: Some(100000),
             warm_start: false,
         });
         let _ = ridge.fit(&x, &y);
-        // let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(),
-        // ridge.intercept()); println!("{:?}", fitted_coef);
+        let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(), ridge.intercept());
+        // println!("{:?}", fitted_coef);
+        // println!("{:?}", fitted_intercept);
+        assert!(l2_diff2(fitted_coef, &coef) < 1e-2);
+        assert!((intercept - fitted_intercept.unwrap()).sum().abs() < 1e-3)
     }
 }
