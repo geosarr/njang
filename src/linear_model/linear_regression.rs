@@ -2,14 +2,23 @@ use crate::{
     linear_model::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
+    stochastic_gradient_descent,
+    traits::Container,
     RegressionModel,
 };
 use ndarray::{Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
+use ndarray_rand::rand_distr::uniform::SampleUniform;
+use num_traits::Float;
 
+use super::{randn_1d, randn_2d};
+use rand_chacha::ChaCha20Rng;
+
+use ndarray_rand::rand::SeedableRng;
+// use ndarray_rand::RandomExt;
 /// Solver to use when fitting a linear regression model (Ordinary Least
 /// Squares, OLS).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum LinearRegressionSolver {
     /// Solves the problem using Singular Value Decomposition
     #[default]
@@ -21,6 +30,8 @@ pub enum LinearRegressionSolver {
     QR,
     /// Uses Cholesky decomposition
     CHOLESKY,
+    /// Stochastic Gradient Descent
+    SGD,
 }
 
 /// Hyperparameters used in a linear regression model
@@ -28,10 +39,24 @@ pub enum LinearRegressionSolver {
 /// - **fit_intercept**: `true` means fit with an intercept, `false` without an
 ///   intercept.
 /// - **solver**: optimization method see [`LinearRegressionSolver`].
-#[derive(Debug, Default)]
-pub struct LinearRegressionHyperParameter {
+/// - etc
+/// ```
+/// panic!("Add doc")
+/// ```
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LinearRegressionSettings<T> {
     pub fit_intercept: bool,
     pub solver: LinearRegressionSolver,
+    pub tol: Option<T>,
+    pub step_size: Option<T>,
+    pub random_state: Option<u32>,
+    pub max_iter: Option<usize>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LinearRegressionParameter<C, I> {
+    pub coef: Option<C>,
+    pub intercept: Option<I>,
 }
 
 /// Ordinary Least Squares (OLS).
@@ -50,17 +75,17 @@ pub struct LinearRegressionHyperParameter {
 /// ```
 /// use ndarray::{array, Array1, Array2};
 /// use njang::{
-///     LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver, RegressionModel,
+///     LinearRegression, LinearRegressionSettings, LinearRegressionSolver, RegressionModel,
 /// };
 /// let x = array![[0., 1.], [1., -1.], [-2., 3.]];
 /// let coef = array![[10., 30.], [20., 40.]];
 /// let y = x.dot(&coef) + 1.;
 /// // multiple linear regression models with intercept.
-/// let mut model =
-///     LinearRegression::<Array2<f32>, Array1<f32>>::new(LinearRegressionHyperParameter {
-///         fit_intercept: true,
-///         solver: LinearRegressionSolver::EXACT,
-///     });
+/// let mut model = LinearRegression::<Array2<f32>, Array1<f32>>::new(LinearRegressionSettings {
+///     fit_intercept: true,
+///     solver: LinearRegressionSolver::EXACT,
+///     ..Default::default()
+/// });
 /// model.fit(&x, &y);
 /// assert!(
 ///     (model.coef().unwrap() - &coef)
@@ -70,35 +95,39 @@ pub struct LinearRegressionHyperParameter {
 ///         < 1e-4
 /// );
 /// ```
-#[derive(Debug)]
-pub struct LinearRegression<C, I> {
-    coef: Option<C>,
-    intercept: Option<I>,
-    settings: LinearRegressionHyperParameter,
+#[derive(Debug, Clone)]
+pub struct LinearRegression<C, I>
+where
+    C: Container,
+{
+    pub parameter: LinearRegressionParameter<C, I>,
+    pub settings: LinearRegressionSettings<C::Elem>,
 }
 
-impl<C, I> LinearRegression<C, I> {
-    pub fn new(settings: LinearRegressionHyperParameter) -> Self {
+impl<C: Container, I> LinearRegression<C, I> {
+    pub fn new(settings: LinearRegressionSettings<C::Elem>) -> Self {
         Self {
+            parameter: LinearRegressionParameter {
+                coef: None,
+                intercept: None,
+            },
             settings,
-            coef: None,
-            intercept: None,
         }
     }
     /// Coefficients of the model
     pub fn coef(&self) -> Option<&C> {
-        self.coef.as_ref()
+        self.parameter.coef.as_ref()
     }
     /// Intercept of the model
     pub fn intercept(&self) -> Option<&I> {
-        self.intercept.as_ref()
+        self.parameter.intercept.as_ref()
     }
 }
 macro_rules! impl_lin_reg {
-    ($ix:ty, $ix_smaller:ty, $exact_name:ident, $qr_name:ident, $chol_name:ident) => {
+    ($ix:ty, $ix_smaller:ty, $exact_name:ident, $qr_name:ident, $chol_name:ident, $randn:ident) => {
         impl<T> RegressionModel for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
         where
-            T: Lapack + ScalarOperand,
+            T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform,
         {
             type FitResult = Result<(), LinalgError>;
             type X = Array2<T>;
@@ -123,9 +152,22 @@ macro_rules! impl_lin_reg {
                             let xct = x_centered.t();
                             $chol_name(xct.dot(&x_centered), xct, &y_centered)?
                         }
+                        LinearRegressionSolver::SGD => {
+                            let mut rng = ChaCha20Rng::seed_from_u64(
+                                self.settings.random_state.unwrap_or(0) as u64,
+                            );
+                            let n_features = x.ncols();
+                            let mut coef = $randn(n_features, y.dimension(), &mut rng);
+                            stochastic_gradient_descent(
+                                &x_centered,
+                                &y_centered,
+                                coef,
+                                &self.settings,
+                            )
+                        }
                     };
-                    self.intercept = Some(y_mean - x_mean.dot(&coef));
-                    self.coef = Some(coef);
+                    self.parameter.intercept = Some(y_mean - x_mean.dot(&coef));
+                    self.parameter.coef = Some(coef);
                 } else {
                     let coef = match self.settings.solver {
                         LinearRegressionSolver::SVD => x.least_squares(&y)?.solution,
@@ -141,20 +183,28 @@ macro_rules! impl_lin_reg {
                             let xt = x.t();
                             $chol_name(xt.dot(x), xt, y)?
                         }
+                        LinearRegressionSolver::SGD => {
+                            let mut rng = ChaCha20Rng::seed_from_u64(
+                                self.settings.random_state.unwrap_or(0) as u64,
+                            );
+                            let n_features = x.ncols();
+                            let mut coef = $randn(n_features, y.dimension(), &mut rng);
+                            stochastic_gradient_descent(x, y, coef, &self.settings)
+                        }
                     };
-                    self.coef = Some(coef);
+                    self.parameter.coef = Some(coef);
                 }
                 Ok(())
             }
             fn predict(&self, x: &Self::X) -> Self::PredictResult {
                 if self.settings.fit_intercept {
-                    if let Some(ref coef) = &self.coef {
-                        if let Some(ref intercept) = &self.intercept {
+                    if let Some(ref coef) = &self.parameter.coef {
+                        if let Some(ref intercept) = &self.parameter.intercept {
                             return Some(intercept + x.dot(coef));
                         }
                     }
                 } else {
-                    if let Some(ref coef) = &self.coef {
+                    if let Some(ref coef) = &self.parameter.coef {
                         return Some(x.dot(coef));
                     }
                 }
@@ -163,5 +213,5 @@ macro_rules! impl_lin_reg {
         }
     };
 }
-impl_lin_reg!(Ix1, Ix0, solve_exact1, solve_qr1, solve_chol1);
-impl_lin_reg!(Ix2, Ix1, solve_exact2, solve_qr2, solve_chol2);
+impl_lin_reg!(Ix1, Ix0, solve_exact1, solve_qr1, solve_chol1, randn_1d);
+impl_lin_reg!(Ix2, Ix1, solve_exact2, solve_qr2, solve_chol2, randn_2d);

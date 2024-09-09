@@ -1,5 +1,5 @@
 use core::ops::Mul;
-use ndarray::{Array1, Array2, ScalarOperand};
+use ndarray::*;
 use ndarray_linalg::Lapack;
 use num_traits::{Float, FromPrimitive};
 /// Implements classic steps of a regression model.
@@ -56,6 +56,69 @@ pub trait Info {
     fn get_ncols(&self) -> Self::NcolsOutput;
     /// Number of rows for 2d containers.
     fn get_nrows(&self) -> Self::NrowsOutput;
+}
+
+pub trait Container {
+    type Elem;
+    type SelectionOutput;
+    fn dimension(&self) -> &[usize];
+    fn selection(&self, axis: usize, indices: &[usize]) -> Self::SelectionOutput;
+}
+
+impl<S, D> Container for ArrayBase<S, D>
+where
+    S: Data,
+    S::Elem: Clone,
+    D: Dimension + RemoveAxis,
+{
+    type Elem = S::Elem;
+    type SelectionOutput = Array<S::Elem, D>;
+    fn dimension(&self) -> &[usize] {
+        Self::shape(&self)
+    }
+    fn selection(&self, axis: usize, indices: &[usize]) -> Self::SelectionOutput {
+        Self::select(self, Axis(axis), indices)
+    }
+}
+
+pub trait Maths: Container {
+    type MeanAxisOutput;
+    fn powi(&self, n: i32) -> Self;
+    fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
+    fn mean(&self) -> Self::Elem;
+    fn l2_norm(&self) -> Self::Elem;
+}
+
+impl<T: Float + FromPrimitive> Maths for Array1<T> {
+    type MeanAxisOutput = Array0<T>;
+    fn powi(&self, n: i32) -> Self {
+        self.map(|v| v.powi(n))
+    }
+    fn mean(&self) -> Self::Elem {
+        Self::mean(self).unwrap()
+    }
+    fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput {
+        Self::mean_axis(self, Axis(axis)).unwrap()
+    }
+    fn l2_norm(&self) -> Self::Elem {
+        self.powi(2).sum()
+    }
+}
+
+impl<T: Float + FromPrimitive> Maths for Array2<T> {
+    type MeanAxisOutput = Array1<T>;
+    fn powi(&self, n: i32) -> Self {
+        self.map(|v| v.powi(n))
+    }
+    fn mean(&self) -> Self::Elem {
+        Self::mean(self).unwrap()
+    }
+    fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput {
+        Self::mean_axis(self, Axis(axis)).unwrap()
+    }
+    fn l2_norm(&self) -> Self::Elem {
+        self.powi(2).sum()
+    }
 }
 
 pub(crate) trait Scalar<X>

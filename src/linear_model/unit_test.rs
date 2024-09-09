@@ -73,9 +73,10 @@ mod tests {
         ];
         for solver in solvers {
             let mut model =
-                LinearRegression::<Array1<_>, Array0<_>>::new(LinearRegressionHyperParameter {
+                LinearRegression::<Array1<_>, Array0<_>>::new(LinearRegressionSettings {
                     fit_intercept: intercept.abs() > 0.,
                     solver,
+                    ..Default::default()
                 });
             let _ = model.fit(&x, &y);
             let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
@@ -111,9 +112,10 @@ mod tests {
         ];
         for solver in solvers {
             let mut model =
-                LinearRegression::<Array2<_>, Array1<_>>::new(LinearRegressionHyperParameter {
+                LinearRegression::<Array2<_>, Array1<_>>::new(LinearRegressionSettings {
                     fit_intercept: intercept.abs() > 0.,
                     solver,
+                    ..Default::default()
                 });
             let _ = model.fit(&x, &y);
             let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());

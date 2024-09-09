@@ -7,9 +7,7 @@ extern crate test;
 
 use ndarray::{Array1, Array2};
 use ndarray_rand::{rand::SeedableRng, rand_distr::StandardNormal, RandomExt};
-use njang::{
-    LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver, RegressionModel,
-};
+use njang::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver, RegressionModel};
 use rand_chacha::ChaCha20Rng;
 use test::Bencher;
 
@@ -26,7 +24,7 @@ fn dataset() -> (Array2<f32>, Array1<f32>) {
 #[bench]
 fn fit_lin_reg_exact_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
         solver: LinearRegressionSolver::EXACT,
     });
@@ -38,7 +36,7 @@ fn fit_lin_reg_exact_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_lin_reg_svd_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
         solver: LinearRegressionSolver::SVD,
     });
@@ -50,7 +48,7 @@ fn fit_lin_reg_svd_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_lin_reg_qr_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
         solver: LinearRegressionSolver::QR,
     });
@@ -62,7 +60,7 @@ fn fit_lin_reg_qr_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_lin_reg_chol_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionHyperParameter {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
         solver: LinearRegressionSolver::CHOLESKY,
     });

@@ -8,6 +8,8 @@ use crate::{
     },
     traits::Info,
 };
+use ndarray_rand::rand_distr::uniform::SampleUniform;
+
 #[allow(unused)]
 use core::{
     marker::{Send, Sync},
@@ -187,8 +189,7 @@ macro_rules! impl_ridge_reg {
                 Option<T>,
             )
             where
-                T: Scalar<Array2<T>> + Scalar<Array1<T>>,
-                StandardNormal: Distribution<T>,
+                T: Scalar<Array2<T>> + Scalar<Array1<T>> + SampleUniform,
             {
                 let mut rng =
                     ChaCha20Rng::seed_from_u64(self.settings.random_state.unwrap_or(0).into());
@@ -253,8 +254,7 @@ macro_rules! impl_ridge_reg {
         }
         impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T>
         where
-            T: Scalar<Array2<T>> + Scalar<Array1<T>>,
-            StandardNormal: Distribution<T>,
+            T: Scalar<Array2<T>> + Scalar<Array1<T>> + SampleUniform,
         {
             type FitResult = Result<(), LinalgError>;
             type X = Array2<T>;

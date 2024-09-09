@@ -5,17 +5,15 @@ use core::ops::{Add, Div, Mul, Sub};
 extern crate alloc;
 use crate::traits::Info;
 use alloc::vec::Vec;
-pub use linear_regression::{
-    LinearRegression, LinearRegressionHyperParameter, LinearRegressionSolver,
-};
+pub use linear_regression::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver};
 use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
     rand::{distributions::Distribution, Rng},
-    rand_distr::StandardNormal,
+    rand_distr::{uniform::SampleUniform, StandardNormal, Uniform},
     RandomExt,
 };
-use num_traits::{FromPrimitive, Zero};
+use num_traits::{Float, FromPrimitive, Zero};
 pub use ridge_regression::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver};
 
 /// Used to preprocess data for linear models
@@ -85,18 +83,24 @@ macro_rules! impl_linalg {
 impl_linalg!(solve_exact1, solve_qr1, solve_chol1, Ix1);
 impl_linalg!(solve_exact2, solve_qr2, solve_chol2, Ix2);
 
-pub(crate) fn randn_1d<T, R: Rng>(n: usize, _m: &[usize], rng: &mut R) -> Array<T, Ix1>
-where
-    StandardNormal: Distribution<T>,
-{
-    Array::<T, Ix1>::random_using(n, StandardNormal, rng)
+pub(crate) fn randn_1d<T: Float + SampleUniform, R: Rng>(
+    n: usize,
+    _m: &[usize],
+    rng: &mut R,
+) -> Array<T, Ix1> {
+    let sqrt_n = T::from(n).unwrap().sqrt();
+    let high = T::one() / sqrt_n;
+    Array::<T, Ix1>::random_using(n, Uniform::new_inclusive(-high, high), rng)
 }
 
-pub(crate) fn randn_2d<T, R: Rng>(n: usize, m: &[usize], rng: &mut R) -> Array<T, Ix2>
-where
-    StandardNormal: Distribution<T>,
-{
-    Array::<T, Ix2>::random_using((n, m[1]), StandardNormal, rng)
+pub(crate) fn randn_2d<T: Float + SampleUniform, R: Rng>(
+    n: usize,
+    m: &[usize],
+    rng: &mut R,
+) -> Array<T, Ix2> {
+    let sqrt_n = T::from(n).unwrap().sqrt();
+    let high = T::one() / sqrt_n;
+    Array::<T, Ix2>::random_using((n, m[1]), Uniform::new_inclusive(-high, high), rng)
 }
 
 pub(crate) fn init_grad_1d<T>(
