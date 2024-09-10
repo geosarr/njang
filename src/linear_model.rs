@@ -3,7 +3,7 @@ mod ridge_regression;
 mod unit_test;
 use core::ops::{Add, Div, Mul, Sub};
 extern crate alloc;
-use crate::traits::Info;
+use crate::traits::{Algebra, Info};
 use alloc::vec::Vec;
 pub use linear_regression::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver};
 use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
@@ -19,13 +19,13 @@ pub use ridge_regression::{RidgeRegression, RidgeRegressionSettings, RidgeRegres
 /// Used to preprocess data for linear models
 pub(crate) fn preprocess<X, Y, MX, MY>(x: &X, y: &Y) -> (X, MX, Y, MY)
 where
-    X: Info<MeanOutput = MX>,
-    Y: Info<MeanOutput = MY>,
+    X: Algebra<MeanAxisOutput = MX>,
+    Y: Algebra<MeanAxisOutput = MY>,
     for<'a> &'a X: Sub<&'a MX, Output = X>,
     for<'a> &'a Y: Sub<&'a MY, Output = Y>,
 {
-    let x_mean = x.mean();
-    let y_mean = y.mean();
+    let x_mean = x.mean_axis(0);
+    let y_mean = y.mean_axis(0);
     let x_centered = x - &x_mean;
     let y_centered = y - &y_mean;
     (x_centered, x_mean, y_centered, y_mean)
