@@ -41,10 +41,11 @@ where
     coef
 }
 
-pub(crate) fn stochastic_gradient_descent<T: Lapack + PartialOrd, Y>(
+pub(crate) fn stochastic_gradient_descent<T: Lapack + PartialOrd, Y, G>(
     x: &Array2<T>,
     y: &Y,
     mut coef: Y,
+    grad: G,
     settings: &LinearRegressionSettings<T>,
 ) -> Y
 where
@@ -54,6 +55,7 @@ where
         + Mul<T, Output = Y>,
     Array2<T>: Container<SelectionOutput = Array2<T>> + Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
+    G: Fn(&Array2<T>, &Y, &Y) -> Y,
 {
     let (step_size, max_iter, tol, random_state) = (
         settings.step_size.unwrap(),
@@ -74,7 +76,7 @@ where
         indices.fill(index);
         let xi = x.selection(0, &indices);
         let yi = y.selection(0, &indices);
-        let update = xi.t().dot(&(xi.dot(&coef) - &yi)) * (-step_size);
+        let update = grad(&xi, &yi, &coef) * (-step_size);
         if update.l2_norm() < tol * coef.l2_norm() {
             break;
         }

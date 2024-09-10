@@ -1,12 +1,14 @@
+use core::ops::{Add, Mul, Sub};
+
 use crate::{
     linear_model::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
     stochastic_gradient_descent,
-    traits::Container,
+    traits::{Container, Maths, Scalar},
     RegressionModel,
 };
-use ndarray::{Array, Array2, Ix0, Ix1, Ix2, ScalarOperand};
+use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
 use ndarray_rand::rand_distr::uniform::SampleUniform;
 use num_traits::Float;
@@ -162,6 +164,7 @@ macro_rules! impl_lin_reg {
                                 &x_centered,
                                 &y_centered,
                                 coef,
+                                lin_reg_gradient,
                                 &self.settings,
                             )
                         }
@@ -189,7 +192,13 @@ macro_rules! impl_lin_reg {
                             );
                             let n_features = x.ncols();
                             let mut coef = $randn(n_features, y.dimension(), &mut rng);
-                            stochastic_gradient_descent(x, y, coef, &self.settings)
+                            stochastic_gradient_descent(
+                                x,
+                                y,
+                                coef,
+                                lin_reg_gradient,
+                                &self.settings,
+                            )
                         }
                     };
                     self.parameter.coef = Some(coef);
@@ -215,3 +224,66 @@ macro_rules! impl_lin_reg {
 }
 impl_lin_reg!(Ix1, Ix0, solve_exact1, solve_qr1, solve_chol1, randn_1d);
 impl_lin_reg!(Ix2, Ix1, solve_exact2, solve_qr2, solve_chol2, randn_2d);
+
+fn lin_reg_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
+where
+    for<'a> Y: Maths<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
+    Array2<T>: Dot<Y, Output = Y>,
+    for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
+{
+    return x.t().dot(&(x.dot(coef) - y));
+}
+
+#[test]
+fn code() {
+    use ndarray::*;
+    use ndarray_rand::rand::SeedableRng;
+    use ndarray_rand::rand_distr::StandardNormal;
+    use ndarray_rand::RandomExt;
+    use rand_chacha::ChaCha20Rng;
+    let settings = LinearRegressionSettings {
+        fit_intercept: true,
+        max_iter: Some(10000),
+        solver: LinearRegressionSolver::SGD,
+        tol: Some(1e-20),
+        random_state: Some(0),
+        step_size: Some(1e-3),
+    };
+    let mut model: LinearRegression<Array1<f32>, Array0<f32>> = LinearRegression {
+        parameter: LinearRegressionParameter {
+            coef: None,
+            intercept: None,
+        },
+        settings: settings,
+    };
+    let mut rng = ChaCha20Rng::seed_from_u64(0);
+    let p = 10;
+    let x = Array::<f32, Ix2>::random_using((100000, p), StandardNormal, &mut rng);
+    let coef = Array1::from((1..p + 1).map(|val| val as f32).collect::<Vec<_>>());
+    let y = x.dot(&coef);
+    model.fit(&x, &y);
+
+    let mut model: LinearRegression<Array2<f32>, Array1<f32>> = LinearRegression {
+        parameter: LinearRegressionParameter {
+            coef: None,
+            intercept: None,
+        },
+        settings: settings,
+    };
+
+    let mut rng = ChaCha20Rng::seed_from_u64(0);
+    let p = 10;
+    let x = Array::<f32, Ix2>::random_using((100000, p), StandardNormal, &mut rng);
+    let r = 10;
+    // let x = (&x - x.mean_axis(Axis(0)).unwrap()) / x.std_axis(Axis(0), 0.);
+    let coef = Array2::from_shape_vec(
+        (p, r),
+        (1..p * r + 1).map(|val| val as f32).collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let intercept = Array1::from_iter((1..r + 1).map(|val| val as f32));
+    let y = x.dot(&coef) + intercept;
+    model.fit(&x, &y);
+    println!("{:?}", model.coef());
+    println!("{:?}", model.intercept());
+}
