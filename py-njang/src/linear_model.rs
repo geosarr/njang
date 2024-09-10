@@ -1,7 +1,6 @@
 use ndarray::{Array0, Array1, Array2};
 use njang::{
-    RegressionModel, RidgeRegression as RidgeReg, RidgeRegressionHyperParameter,
-    RidgeRegressionSolver,
+    RegressionModel, RidgeRegression as RidgeReg, RidgeRegressionSettings, RidgeRegressionSolver,
 };
 use numpy::{IntoPyArray, PyArray0, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -20,20 +19,11 @@ impl LinearRegression {
         tol: Option<f64>,
         solver: Option<&str>,
         random_state: Option<u32>,
-        warm_start: Option<bool>,
     ) -> PyResult<Self> {
         // RidgeRegression seems to be faster than plain LinearRegression when penalty
         // is set to 0., why ?
         Ok(Self {
-            reg: RidgeRegression::new(
-                0.,
-                fit_intercept,
-                max_iter,
-                tol,
-                solver,
-                random_state,
-                warm_start,
-            )?,
+            reg: RidgeRegression::new(0., fit_intercept, max_iter, tol, solver, random_state)?,
         })
     }
     pub fn fit<'py>(
@@ -72,7 +62,6 @@ impl RidgeRegression {
         tol: Option<f64>,
         solver: Option<&str>,
         random_state: Option<u32>,
-        warm_start: Option<bool>,
     ) -> PyResult<Self> {
         Ok(Self {
             reg_1d: RidgeRegression1d::new(
@@ -82,7 +71,6 @@ impl RidgeRegression {
                 tol,
                 solver,
                 random_state,
-                warm_start,
             )?,
             reg_2d: RidgeRegression2d::new(
                 alpha,
@@ -91,7 +79,6 @@ impl RidgeRegression {
                 tol,
                 solver,
                 random_state,
-                warm_start,
             )?,
             fitted_1d: false,
             fitted_2d: false,
@@ -156,7 +143,6 @@ macro_rules! impl_ridge_reg {
                 tol: Option<f64>,
                 solver: Option<&str>,
                 random_state: Option<u32>,
-                warm_start: Option<bool>,
             ) -> PyResult<Self> {
                 let solver = if let Some(solvr) = solver {
                     if solvr == "sgd" {
@@ -178,14 +164,13 @@ macro_rules! impl_ridge_reg {
                 } else {
                     RidgeRegressionSolver::SGD
                 };
-                let settings = RidgeRegressionHyperParameter {
+                let settings = RidgeRegressionSettings {
                     alpha,
                     fit_intercept,
                     solver,
                     tol: Some(tol.unwrap_or(0.0001)),
                     random_state: Some(random_state.unwrap_or(0)),
                     max_iter: Some(max_iter.unwrap_or(100000)),
-                    warm_start: warm_start.unwrap_or(false),
                 };
                 Ok(Self {
                     reg: RidgeReg::new(settings),

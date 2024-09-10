@@ -8,6 +8,7 @@ use crate::{
     },
     traits::Info,
 };
+use ndarray_linalg::Lapack;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
 
 #[allow(unused)]
@@ -17,11 +18,7 @@ use core::{
 };
 use ndarray::{linalg::Dot, Array, Array1, Array2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::error::LinalgError;
-use ndarray_rand::{
-    rand::{distributions::Distribution, SeedableRng},
-    rand_distr::{StandardNormal, Uniform},
-    RandomExt,
-};
+use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
 use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
 
@@ -73,19 +70,17 @@ pub enum RidgeRegressionSolver {
 ///     - No impact on the other algorithms.
 /// - **random_state**: seed of random generators.
 /// - **max_iter**: maximum number of iterations.
-/// - **warm_start**: whether or not warm starting is allowed.
 #[derive(Debug)]
-pub struct RidgeRegressionHyperParameter<T> {
+pub struct RidgeRegressionSettings<T> {
     pub alpha: T,
     pub fit_intercept: bool,
     pub solver: RidgeRegressionSolver,
     pub tol: Option<T>,
     pub random_state: Option<u32>,
     pub max_iter: Option<usize>,
-    pub warm_start: bool,
 }
 
-impl<T> Default for RidgeRegressionHyperParameter<T>
+impl<T> Default for RidgeRegressionSettings<T>
 where
     T: Default + FromPrimitive,
 {
@@ -97,11 +92,10 @@ where
             tol: Some(T::from_f32(0.0001).unwrap()),
             random_state: Some(0),
             max_iter: Some(1000),
-            warm_start: true,
         }
     }
 }
-impl<T> RidgeRegressionHyperParameter<T> {
+impl<T> RidgeRegressionSettings<T> {
     /// Creates a new instance of EXACT solver.
     pub fn new_exact(alpha: T, fit_intercept: bool) -> Self {
         Self {
@@ -111,7 +105,6 @@ impl<T> RidgeRegressionHyperParameter<T> {
             tol: None,
             random_state: None,
             max_iter: None,
-            warm_start: false,
         }
     }
 }
@@ -121,29 +114,26 @@ impl<T> RidgeRegressionHyperParameter<T> {
 pub struct RidgeRegression<C, I, T = f32> {
     coef: Option<C>,
     intercept: Option<I>,
-    settings: RidgeRegressionHyperParameter<T>,
+    settings: RidgeRegressionSettings<T>,
 }
 
 impl<C, I, T> RidgeRegression<C, I, T> {
     /// Creates a new instance of `Self`.
     ///
-    /// See also: [RidgeRegressionHyperParameter], [RidgeRegressionSolver],
+    /// See also: [RidgeRegressionSettings], [RidgeRegressionSolver],
     /// [RegressionModel].
     /// ```
     /// use ndarray::{array, Array0, Array1};
-    /// use njang::{
-    ///     RegressionModel, RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver,
-    /// };
+    /// use njang::{RegressionModel, RidgeRegression, RidgeRegressionSettings, RidgeRegressionSolver};
     /// // Initial model
     /// let mut model =
-    ///     RidgeRegression::<Array1<f32>, Array0<f32>, f32>::new(RidgeRegressionHyperParameter {
+    ///     RidgeRegression::<Array1<f32>, Array0<f32>, f32>::new(RidgeRegressionSettings {
     ///         alpha: 0.01,
     ///         tol: Some(0.0001),
     ///         solver: RidgeRegressionSolver::SGD,
     ///         fit_intercept: true,
     ///         random_state: Some(123),
     ///         max_iter: Some(1),
-    ///         warm_start: true,
     ///     });
     /// // Dataset
     /// let x0 = array![[1., 2.], [-3., -4.], [0., 7.], [-2., 5.]];
@@ -154,7 +144,7 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     /// let y1 = array![1.5, -1., 0., 1.];
     /// model.fit(&x1, &y1);
     /// ```
-    pub fn new(settings: RidgeRegressionHyperParameter<T>) -> Self {
+    pub fn new(settings: RidgeRegressionSettings<T>) -> Self {
         Self {
             coef: None,
             intercept: None,
@@ -194,16 +184,7 @@ macro_rules! impl_ridge_reg {
                 let mut rng =
                     ChaCha20Rng::seed_from_u64(self.settings.random_state.unwrap_or(0).into());
                 let (n_samples, n_features) = (x.nrows(), x.ncols());
-                let coef = if let Some(coef) = &self.coef {
-                    // warm start is activated
-                    if self.settings.warm_start {
-                        coef.clone()
-                    } else {
-                        $randn(n_features, y.shape(), &mut rng)
-                    }
-                } else {
-                    $randn(n_features, y.shape(), &mut rng)
-                };
+                let coef = $randn(n_features, y.shape(), &mut rng);
                 let nf = T::from(n_samples).unwrap(); // critical when number of samples > int(f32::MAX) ?
                 let alpha_norm = self.settings.alpha / nf;
                 let (gradients, sum_gradients) = match self.settings.solver {

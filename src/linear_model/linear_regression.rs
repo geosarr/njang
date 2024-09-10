@@ -159,7 +159,7 @@ macro_rules! impl_lin_reg {
                                 self.settings.random_state.unwrap_or(0) as u64,
                             );
                             let n_features = x.ncols();
-                            let mut coef = $randn(n_features, y.dimension(), &mut rng);
+                            let coef = $randn(n_features, y.dimension(), &mut rng);
                             stochastic_gradient_descent(
                                 &x_centered,
                                 &y_centered,
@@ -191,7 +191,7 @@ macro_rules! impl_lin_reg {
                                 self.settings.random_state.unwrap_or(0) as u64,
                             );
                             let n_features = x.ncols();
-                            let mut coef = $randn(n_features, y.dimension(), &mut rng);
+                            let coef = $randn(n_features, y.dimension(), &mut rng);
                             stochastic_gradient_descent(
                                 x,
                                 y,

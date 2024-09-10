@@ -9,12 +9,12 @@ pub use linear_regression::{LinearRegression, LinearRegressionSettings, LinearRe
 use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
-    rand::{distributions::Distribution, Rng},
-    rand_distr::{uniform::SampleUniform, StandardNormal, Uniform},
+    rand::Rng,
+    rand_distr::{uniform::SampleUniform, Uniform},
     RandomExt,
 };
 use num_traits::{Float, FromPrimitive, Zero};
-pub use ridge_regression::{RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver};
+pub use ridge_regression::{RidgeRegression, RidgeRegressionSettings, RidgeRegressionSolver};
 
 /// Used to preprocess data for linear models
 pub(crate) fn preprocess<X, Y, MX, MY>(x: &X, y: &Y) -> (X, MX, Y, MY)

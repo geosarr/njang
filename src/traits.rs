@@ -8,7 +8,7 @@ pub trait RegressionModel {
     type Y;
     type FitResult;
     type PredictResult;
-    /// Trains the model, with possibly warm start.
+    /// Trains the model.
     fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult;
     /// Predicts instances if possible.
     fn predict(&self, x: &Self::X) -> Self::PredictResult;

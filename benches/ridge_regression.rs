@@ -8,7 +8,7 @@ extern crate test;
 use ndarray::{Array1, Array2};
 use ndarray_rand::{rand::SeedableRng, rand_distr::StandardNormal, RandomExt};
 use njang::{
-    RegressionModel, RidgeRegression, RidgeRegressionHyperParameter, RidgeRegressionSolver,
+    RegressionModel, RidgeRegression, RidgeRegressionSettings, RidgeRegressionSolver,
 };
 use rand_chacha::ChaCha20Rng;
 use test::Bencher;
@@ -26,7 +26,7 @@ fn dataset() -> (Array2<f32>, Array1<f32>) {
 #[bench]
 fn fit_ridge_reg_exact_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut ridge_reg = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionHyperParameter {
+    let mut ridge_reg = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionSettings {
         fit_intercept: false,
         solver: RidgeRegressionSolver::EXACT,
         ..Default::default()
@@ -39,7 +39,7 @@ fn fit_ridge_reg_exact_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_ridge_reg_sgd_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut ridge_reg = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionHyperParameter {
+    let mut ridge_reg = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionSettings {
         fit_intercept: false,
         solver: RidgeRegressionSolver::SGD,
         max_iter: Some(10000),
@@ -53,7 +53,7 @@ fn fit_ridge_reg_sgd_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_ridge_reg_qr_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut ridge_reg = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionHyperParameter {
+    let mut ridge_reg = RidgeRegression::<Array1<_>, _>::new(RidgeRegressionSettings {
         fit_intercept: false,
         solver: RidgeRegressionSolver::QR,
         ..Default::default()
