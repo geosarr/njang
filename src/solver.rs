@@ -10,7 +10,8 @@ use ndarray_rand::{
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
-    traits::{Container, Maths},
+    linear_model::LinearModelSettings,
+    traits::{Algebra, Container},
     LinearRegressionSettings,
 };
 
@@ -21,7 +22,7 @@ pub(crate) fn batch_gradient_descent<T: Lapack + PartialOrd, Y>(
     settings: &LinearRegressionSettings<T>,
 ) -> Y
 where
-    for<'a> Y: Maths<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
+    for<'a> Y: Algebra<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
     Array2<T>: Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
 {
@@ -41,27 +42,32 @@ where
     coef
 }
 
-pub(crate) fn stochastic_gradient_descent<T: Lapack + PartialOrd, Y, G>(
+pub(crate) fn stochastic_gradient_descent<
+    T: Lapack + PartialOrd,
+    Y,
+    G,
+    S: LinearModelSettings<Scalar = T>,
+>(
     x: &Array2<T>,
     y: &Y,
     mut coef: Y,
-    grad: G,
-    settings: &LinearRegressionSettings<T>,
+    scaled_grad: G,
+    settings: &S,
 ) -> Y
 where
-    for<'a> Y: Maths<Elem = T, SelectionOutput = Y>
+    for<'a> Y: Algebra<Elem = T, SelectionOutput = Y>
         + Sub<&'a Y, Output = Y>
         + Add<Y, Output = Y>
         + Mul<T, Output = Y>,
+    for<'a> &'a Y: Mul<T, Output = Y>,
     Array2<T>: Container<SelectionOutput = Array2<T>> + Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
-    G: Fn(&Array2<T>, &Y, &Y) -> Y,
+    G: Fn(&Array2<T>, &Y, &Y, &S) -> Y,
 {
-    let (step_size, max_iter, tol, random_state) = (
-        settings.step_size.unwrap(),
-        settings.max_iter.unwrap(),
-        settings.tol.unwrap(),
-        settings.random_state.unwrap() as u64,
+    let (max_iter, tol, random_state) = (
+        settings.max_iter().unwrap(),
+        settings.tol().unwrap(),
+        settings.random_state().unwrap() as u64,
     );
     let mut rng = ChaCha20Rng::seed_from_u64(random_state);
     let unif = Uniform::<usize>::new(0, x.nrows());
@@ -76,7 +82,7 @@ where
         indices.fill(index);
         let xi = x.selection(0, &indices);
         let yi = y.selection(0, &indices);
-        let update = grad(&xi, &yi, &coef) * (-step_size);
+        let update = scaled_grad(&xi, &yi, &coef, &settings); // (minus step size should be mutiplied to scale_grad function output).
         if update.l2_norm() < tol * coef.l2_norm() {
             break;
         }

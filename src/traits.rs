@@ -81,7 +81,7 @@ where
     }
 }
 
-pub trait Maths: Container {
+pub trait Algebra: Container {
     type MeanAxisOutput;
     fn powi(&self, n: i32) -> Self;
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
@@ -89,7 +89,7 @@ pub trait Maths: Container {
     fn l2_norm(&self) -> Self::Elem;
 }
 
-impl<T: Float + FromPrimitive> Maths for Array1<T> {
+impl<T: Float + FromPrimitive> Algebra for Array1<T> {
     type MeanAxisOutput = Array0<T>;
     fn powi(&self, n: i32) -> Self {
         self.map(|v| v.powi(n))
@@ -101,11 +101,11 @@ impl<T: Float + FromPrimitive> Maths for Array1<T> {
         Self::mean_axis(self, Axis(axis)).unwrap()
     }
     fn l2_norm(&self) -> Self::Elem {
-        self.powi(2).sum()
+        self.powi(2).sum().sqrt()
     }
 }
 
-impl<T: Float + FromPrimitive> Maths for Array2<T> {
+impl<T: Float + FromPrimitive> Algebra for Array2<T> {
     type MeanAxisOutput = Array1<T>;
     fn powi(&self, n: i32) -> Self {
         self.map(|v| v.powi(n))
@@ -117,7 +117,7 @@ impl<T: Float + FromPrimitive> Maths for Array2<T> {
         Self::mean_axis(self, Axis(axis)).unwrap()
     }
     fn l2_norm(&self) -> Self::Elem {
-        self.powi(2).sum()
+        self.powi(2).sum().sqrt()
     }
 }
 

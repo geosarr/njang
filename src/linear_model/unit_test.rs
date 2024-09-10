@@ -2,7 +2,7 @@ mod tests {
     use super::super::*;
     use crate::RegressionModel;
     extern crate alloc;
-    use crate::{l2_diff, l2_diff2};
+    use crate::traits::Algebra;
     use alloc::vec::Vec;
     use ndarray::{Array, Array0, Array1, Array2, Ix0, Ix1, Ix2};
 
@@ -35,7 +35,7 @@ mod tests {
     }
 
     macro_rules! impl_assert_reg {
-        ($name:ident, $l2_norm:ident, $ix:ty, $ix_smaller:ty) => {
+        ($name:ident, $ix:ty, $ix_smaller:ty) => {
             fn $name<M>(
                 model: &M,
                 x: &Array2<f32>,
@@ -48,20 +48,20 @@ mod tests {
             ) where
                 M: RegressionModel<X = Array2<f32>, PredictResult = Option<Array<f32, $ix>>>,
             {
-                // println!("{:?}", $l2_norm(fitted_coef, true_coef));
-                assert!($l2_norm(fitted_coef, true_coef) < tol);
+                // println!("{:?}", true_coef);
+                assert!((fitted_coef - true_coef).l2_norm() < tol);
                 if let Some(true_inter) = true_intercept {
                     if let Some(fitted_inter) = fitted_intercept {
                         assert!((fitted_inter - true_inter).map(|x| x.abs()).sum() < tol);
                     }
                 }
-                let pred_error = $l2_norm(&model.predict(&x).unwrap(), &y);
+                let pred_error = (model.predict(&x).unwrap() - y).l2_norm();
                 assert!(pred_error < tol);
             }
         };
     }
-    impl_assert_reg!(assert_one_reg, l2_diff, Ix1, Ix0);
-    impl_assert_reg!(assert_multi_reg, l2_diff2, Ix2, Ix1);
+    impl_assert_reg!(assert_one_reg, Ix1, Ix0);
+    impl_assert_reg!(assert_multi_reg, Ix2, Ix1);
 
     #[allow(unused)]
     fn lin_one_reg(intercept: f32, tol: f32) {
@@ -157,8 +157,9 @@ mod tests {
                 tol: Some(1e-10),
                 solver,
                 fit_intercept: intercept.abs() > 0.,
-                random_state: None,
+                random_state: Some(0),
                 max_iter: Some(100000),
+                step_size: Some(0.001),
             });
             let _ = model.fit(&x, &y);
             let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
@@ -209,13 +210,14 @@ mod tests {
             tol: Some(1e-10),
             solver: RidgeRegressionSolver::SGD,
             fit_intercept: intercept.abs() > 0.,
-            random_state: None,
+            random_state: Some(0),
             max_iter: Some(100000),
+            step_size: Some(0.001),
         });
         let _ = ridge.fit(&x, &y);
         // println!("{:?}", ridge.coef());
         // println!("{:?}", ridge.intercept());
-        assert!(l2_diff2(&coef, &ridge.coef().unwrap()) < 5e-3);
+        assert!((&coef - ridge.coef().unwrap()).l2_norm() < 5e-3);
     }
 
     #[test]
@@ -227,14 +229,15 @@ mod tests {
             tol: Some(1e-10),
             solver: RidgeRegressionSolver::SAG,
             fit_intercept: intercept.abs() > 0.,
-            random_state: None,
+            random_state: Some(0),
             max_iter: Some(100000),
+            step_size: Some(0.001),
         });
         let _ = ridge.fit(&x, &y);
         let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(), ridge.intercept());
         // println!("{:?}", fitted_coef);
         // println!("{:?}", fitted_intercept);
-        assert!(l2_diff2(fitted_coef, &coef) < 1e-2);
+        assert!((fitted_coef - &coef).l2_norm() < 1e-2);
         assert!((intercept - fitted_intercept.unwrap()).sum().abs() < 1e-3)
     }
 }

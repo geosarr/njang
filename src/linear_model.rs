@@ -31,6 +31,44 @@ where
     (x_centered, x_mean, y_centered, y_mean)
 }
 
+pub(crate) trait LinearModelSettings {
+    type Scalar;
+    fn max_iter(&self) -> Option<usize> {
+        None
+    }
+    fn step_size(&self) -> Option<Self::Scalar> {
+        None
+    }
+    fn tol(&self) -> Option<Self::Scalar> {
+        None
+    }
+    fn random_state(&self) -> Option<u32> {
+        None
+    }
+}
+
+macro_rules! impl_settings {
+    ($settings:ident) => {
+        impl<T: Copy> LinearModelSettings for $settings<T> {
+            type Scalar = T;
+            fn max_iter(&self) -> Option<usize> {
+                self.max_iter
+            }
+            fn step_size(&self) -> Option<Self::Scalar> {
+                self.step_size
+            }
+            fn tol(&self) -> Option<Self::Scalar> {
+                self.tol
+            }
+            fn random_state(&self) -> Option<u32> {
+                self.random_state
+            }
+        }
+    };
+}
+impl_settings!(LinearRegressionSettings);
+impl_settings!(RidgeRegressionSettings);
+
 macro_rules! impl_linalg {
     ($exact_name:ident, $qr_name:ident, $chol_name:ident, $ix:ty) => {
         pub(crate) fn $exact_name<T>(

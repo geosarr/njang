@@ -5,7 +5,7 @@ use crate::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
     stochastic_gradient_descent,
-    traits::{Container, Maths, Scalar},
+    traits::{Container, Algebra},
     RegressionModel,
 };
 use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix0, Ix1, Ix2, ScalarOperand};
@@ -225,13 +225,19 @@ macro_rules! impl_lin_reg {
 impl_lin_reg!(Ix1, Ix0, solve_exact1, solve_qr1, solve_chol1, randn_1d);
 impl_lin_reg!(Ix2, Ix1, solve_exact2, solve_qr2, solve_chol2, randn_2d);
 
-fn lin_reg_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
+fn lin_reg_gradient<T: Lapack, Y>(
+    x: &Array2<T>,
+    y: &Y,
+    coef: &Y,
+    settings: &LinearRegressionSettings<T>,
+) -> Y
 where
-    for<'a> Y: Maths<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
+    for<'a> Y: Algebra<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
     Array2<T>: Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
 {
-    return x.t().dot(&(x.dot(coef) - y));
+    let step_size = settings.step_size.unwrap();
+    return x.t().dot(&(x.dot(coef) - y)) * (-step_size);
 }
 
 #[test]

@@ -1,13 +1,15 @@
 use crate::l2_norm1;
 use crate::linear_model::{randn_1d, randn_2d};
-use crate::traits::Scalar;
+use crate::traits::{Algebra, Scalar};
 use crate::RegressionModel;
 use crate::{
     linear_model::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
+    solver::stochastic_gradient_descent,
     traits::Info,
 };
+use ndarray::ArrayView2;
 use ndarray_linalg::Lapack;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
 
@@ -21,6 +23,7 @@ use ndarray_linalg::error::LinalgError;
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
 use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
+use std::collections::HashMap;
 
 use super::{init_grad_1d, init_grad_2d};
 
@@ -76,6 +79,7 @@ pub struct RidgeRegressionSettings<T> {
     pub fit_intercept: bool,
     pub solver: RidgeRegressionSolver,
     pub tol: Option<T>,
+    pub step_size: Option<T>,
     pub random_state: Option<u32>,
     pub max_iter: Option<usize>,
 }
@@ -90,6 +94,7 @@ where
             fit_intercept: true,
             solver: Default::default(),
             tol: Some(T::from_f32(0.0001).unwrap()),
+            step_size: Some(T::from_f32(0.001).unwrap()),
             random_state: Some(0),
             max_iter: Some(1000),
         }
@@ -103,17 +108,23 @@ impl<T> RidgeRegressionSettings<T> {
             fit_intercept,
             solver: RidgeRegressionSolver::EXACT,
             tol: None,
+            step_size: None,
             random_state: None,
             max_iter: None,
         }
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RidgeRegressionParameter<C, I> {
+    pub coef: Option<C>,
+    pub intercept: Option<I>,
+}
+
 /// L2-norm penalized Ordinary Least Squares.
 #[derive(Debug)]
 pub struct RidgeRegression<C, I, T = f32> {
-    coef: Option<C>,
-    intercept: Option<I>,
+    parameter: RidgeRegressionParameter<C, I>,
     settings: RidgeRegressionSettings<T>,
 }
 
@@ -139,25 +150,23 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     /// let x0 = array![[1., 2.], [-3., -4.], [0., 7.], [-2., 5.]];
     /// let y0 = array![0.5, -1., 2., 3.5];
     /// model.fit(&x0, &y0);
-    /// // ... once model is fit, it can be trained again from where it stopped.
-    /// let x1 = array![[0., 0.], [-1., -1.], [0.5, -5.], [-1., 3.]];
-    /// let y1 = array![1.5, -1., 0., 1.];
-    /// model.fit(&x1, &y1);
     /// ```
     pub fn new(settings: RidgeRegressionSettings<T>) -> Self {
         Self {
-            coef: None,
-            intercept: None,
+            parameter: RidgeRegressionParameter {
+                coef: None,
+                intercept: None,
+            },
             settings,
         }
     }
     /// Coefficients of the model
     pub fn coef(&self) -> Option<&C> {
-        self.coef.as_ref()
+        self.parameter.coef.as_ref()
     }
     /// Intercept of the model
     pub fn intercept(&self) -> Option<&I> {
-        self.intercept.as_ref()
+        self.parameter.intercept.as_ref()
     }
 }
 
@@ -248,14 +257,12 @@ macro_rules! impl_ridge_reg {
                         RidgeRegressionSolver::SGD => {
                             let (alpha_norm, max_iter, tol, samples, coef, _, _, lambda) =
                                 self.init_stochastic_algo(x, y);
-                            $grad(
+                            stochastic_gradient_descent(
                                 &x_centered,
                                 &y_centered,
                                 coef,
-                                max_iter,
-                                &samples,
-                                alpha_norm,
-                                ($sgd, $norm, tol, &mut None, &mut None, lambda), // use a struct ?
+                                ridge_reg_gradient,
+                                &self.settings,
                             )
                         }
                         RidgeRegressionSolver::EXACT => {
@@ -311,8 +318,8 @@ macro_rules! impl_ridge_reg {
                             )?
                         }
                     };
-                    self.intercept = Some(y_mean - x_mean.dot(&coef));
-                    self.coef = Some(coef);
+                    self.parameter.intercept = Some(y_mean - x_mean.dot(&coef));
+                    self.parameter.coef = Some(coef);
                 } else {
                     let coef = match self.settings.solver {
                         RidgeRegressionSolver::SGD => {
@@ -369,19 +376,19 @@ macro_rules! impl_ridge_reg {
                             $chol_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
                         }
                     };
-                    self.coef = Some(coef);
+                    self.parameter.coef = Some(coef);
                 }
                 Ok(())
             }
             fn predict(&self, x: &Self::X) -> Self::PredictResult {
                 if self.settings.fit_intercept {
-                    if let Some(ref coef) = &self.coef {
-                        if let Some(ref intercept) = &self.intercept {
+                    if let Some(ref coef) = &self.parameter.coef {
+                        if let Some(ref intercept) = &self.parameter.intercept {
                             return Some(intercept + x.dot(coef));
                         }
                     }
                 } else {
-                    if let Some(ref coef) = &self.coef {
+                    if let Some(ref coef) = &self.parameter.coef {
                         return Some(x.dot(coef));
                     }
                 }
@@ -632,4 +639,22 @@ where
         .for_each(drop);
     let coef = coef.lock().unwrap();
     coef.clone()
+}
+
+fn ridge_reg_gradient<T: Lapack, Y>(
+    x: &Array2<T>,
+    y: &Y,
+    coef: &Y,
+    settings: &RidgeRegressionSettings<T>,
+) -> Y
+where
+    for<'a> Y: Algebra<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
+    for<'a> &'a Y: Mul<T, Output = Y>,
+    Array2<T>: Dot<Y, Output = Y>,
+    for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
+{
+    let step_size = settings.step_size.unwrap();
+    let l2_penalty = settings.alpha;
+    let grad = x.t().dot(&(x.dot(coef) - y)) + coef * l2_penalty;
+    return grad * (-step_size);
 }
