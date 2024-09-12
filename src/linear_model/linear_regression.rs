@@ -1,6 +1,7 @@
 use core::ops::{Mul, Sub};
 
 use crate::{
+    batch_gradient_descent,
     linear_model::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
@@ -34,6 +35,8 @@ pub enum LinearRegressionSolver {
     CHOLESKY,
     /// Stochastic Gradient Descent
     SGD,
+    /// Batch Gradient Descent
+    BGD,
 }
 
 /// Hyperparameters used in a linear regression model
@@ -193,6 +196,7 @@ impl<C: Container, I> LinearRegression<C, I> {
         // sel
     }
 }
+
 macro_rules! impl_lin_reg {
     ($ix:ty, $ix_smaller:ty, $exact_name:ident, $qr_name:ident, $chol_name:ident, $randn:ident) => {
         impl<T> RegressionModel for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
@@ -244,6 +248,28 @@ macro_rules! impl_lin_reg {
                                 &self.internal,
                             )
                         }
+                        LinearRegressionSolver::BGD => {
+                            self.set_internal(x, y);
+                            let (n_targets, n_features, rng) = (
+                                self.internal.n_targets,
+                                self.internal.n_features,
+                                self.internal.rng.as_mut().unwrap(),
+                            );
+                            // Rescale step_size to scale gradients correctly
+                            // [Specific to this algorithm]
+                            self.internal
+                                .step_size
+                                .as_mut()
+                                .map(|s| *s = *s / T::from(n_targets).unwrap());
+                            let coef = $randn(n_features, y.dimension(), rng);
+                            batch_gradient_descent(
+                                &x_centered,
+                                &y_centered,
+                                coef,
+                                linear_regression_gradient,
+                                &self.internal,
+                            )
+                        }
                     };
                     self.parameter.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.parameter.coef = Some(coef);
@@ -277,6 +303,21 @@ macro_rules! impl_lin_reg {
                                 .map(|s| *s = *s / T::from(n_targets).unwrap());
                             let coef = $randn(n_features, y.dimension(), rng);
                             stochastic_gradient_descent(
+                                x,
+                                y,
+                                coef,
+                                linear_regression_gradient,
+                                &self.internal,
+                            )
+                        }
+                        LinearRegressionSolver::BGD => {
+                            self.set_internal(x, y);
+                            let (n_features, rng) = (
+                                self.internal.n_features,
+                                self.internal.rng.as_mut().unwrap(),
+                            );
+                            let coef = $randn(n_features, y.dimension(), rng);
+                            batch_gradient_descent(
                                 x,
                                 y,
                                 coef,

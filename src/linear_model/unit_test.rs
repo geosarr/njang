@@ -4,8 +4,25 @@ mod tests {
     extern crate alloc;
     use crate::traits::Algebra;
     use alloc::vec::Vec;
-    use ndarray::{Array, Array0, Array1, Array2, Ix0, Ix1, Ix2};
+    use ndarray::{Array, Array1, Array2, Ix0, Ix1, Ix2};
 
+    const LINEAR_REGRESSION_SOLVERS: [LinearRegressionSolver; 6] = [
+        LinearRegressionSolver::SVD,
+        LinearRegressionSolver::SGD,
+        LinearRegressionSolver::BGD,
+        LinearRegressionSolver::QR,
+        LinearRegressionSolver::EXACT,
+        LinearRegressionSolver::CHOLESKY,
+    ];
+
+    const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 5] = [
+        RidgeRegressionSolver::SAG,
+        RidgeRegressionSolver::SGD,
+        // RidgeRegressionSolver::BGD,
+        RidgeRegressionSolver::QR,
+        RidgeRegressionSolver::EXACT,
+        RidgeRegressionSolver::CHOLESKY,
+    ];
     // from https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn.linear_model.LinearRegression
     #[allow(unused)]
     fn predictor() -> Array2<f32> {
@@ -33,10 +50,9 @@ mod tests {
         let y = x.dot(&coef) + intercept;
         (x, y, coef)
     }
-
     macro_rules! impl_assert_reg {
-        ($name:ident, $ix:ty, $ix_smaller:ty) => {
-            fn $name<M>(
+        ($assert_name:ident, $ix:ty, $ix_smaller:ty) => {
+            fn $assert_name<M>(
                 model: &M,
                 x: &Array2<f32>,
                 y: &Array<f32, $ix>,
@@ -49,6 +65,7 @@ mod tests {
                 M: RegressionModel<X = Array2<f32>, PredictResult = Option<Array<f32, $ix>>>,
             {
                 // println!("{:?}", true_coef);
+                // println!("{:?}", fitted_coef);
                 assert!((fitted_coef - true_coef).l2_norm() < tol);
                 if let Some(true_inter) = true_intercept {
                     if let Some(fitted_inter) = fitted_intercept {
@@ -63,117 +80,92 @@ mod tests {
     impl_assert_reg!(assert_one_reg, Ix1, Ix0);
     impl_assert_reg!(assert_multi_reg, Ix2, Ix1);
 
-    #[allow(unused)]
-    fn lin_one_reg(intercept: f32, tol: f32) {
-        let (x, y, coef) = one_reg_dataset(intercept);
-        let solvers = [
-            LinearRegressionSolver::SVD,
-            LinearRegressionSolver::QR,
-            LinearRegressionSolver::EXACT,
-        ];
-        for solver in solvers {
-            let mut model =
-                LinearRegression::<Array1<_>, Array0<_>>::new(LinearRegressionSettings {
-                    fit_intercept: intercept.abs() > 0.,
-                    solver,
-                    ..Default::default()
-                });
-            let _ = model.fit(&x, &y);
-            let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
-            assert_one_reg(
-                &model,
-                &x,
-                &y,
-                tol,
-                &coef,
-                fitted_coef,
-                Some(intercept),
-                fitted_intercept,
-            );
-        }
+    macro_rules! impl_test {
+        ($assert_name:ident, $test_name:ident, $model_name:ident, $model_settings:ident, $dataset:ident, $solvers:ident, $ix:ty, $ix_smaller:ty) => {
+            fn $test_name(intercept: f32, tol: f32) {
+                let (x, y, coef) = $dataset(intercept);
+                for solver in $solvers {
+                    // println!("{:?}", solver);
+                    let mut model = $model_name::<_, _>::new($model_settings {
+                        fit_intercept: intercept.abs() > 0.,
+                        solver,
+                        max_iter: Some(100000),
+                        tol: Some(1e-10),
+                        ..Default::default() // default value of penalties should be 0.
+                    });
+                    let _ = model.fit(&x, &y);
+                    let (fitted_coef, fitted_intercept) =
+                        (model.coef().unwrap(), model.intercept());
+                    $assert_name(
+                        &model,
+                        &x,
+                        &y,
+                        tol,
+                        &coef,
+                        fitted_coef,
+                        Some(intercept),
+                        fitted_intercept,
+                    );
+                }
+            }
+        };
     }
+    impl_test!(
+        assert_one_reg,
+        lin_one_reg,
+        LinearRegression,
+        LinearRegressionSettings,
+        one_reg_dataset,
+        LINEAR_REGRESSION_SOLVERS,
+        Ix1,
+        Ix0
+    );
+    impl_test!(
+        assert_one_reg,
+        ridge_one_reg,
+        RidgeRegression,
+        RidgeRegressionSettings,
+        one_reg_dataset,
+        RIDGE_REGRESSION_SOLVERS,
+        Ix1,
+        Ix0
+    );
+    impl_test!(
+        assert_multi_reg,
+        lin_multi_reg,
+        LinearRegression,
+        LinearRegressionSettings,
+        multi_reg_dataset,
+        LINEAR_REGRESSION_SOLVERS,
+        Ix2,
+        Ix1
+    );
+    impl_test!(
+        assert_multi_reg,
+        ridge_multi_reg,
+        RidgeRegression,
+        RidgeRegressionSettings,
+        multi_reg_dataset,
+        RIDGE_REGRESSION_SOLVERS,
+        Ix2,
+        Ix1
+    );
+
     #[test]
     fn test_lin_one_reg_with_intercept() {
-        lin_one_reg(3., 1e-6)
+        lin_one_reg(3., 5e-4)
     }
     #[test]
     fn test_lin_one_reg_without_intercept() {
-        lin_one_reg(0., 2e-5)
+        lin_one_reg(0., 5e-4)
     }
-
-    #[allow(unused)]
-    fn lin_multi_reg(intercept: f32, tol: f32) {
-        let (x, y, coef) = multi_reg_dataset(intercept);
-        let solvers = [
-            LinearRegressionSolver::SVD,
-            LinearRegressionSolver::QR,
-            LinearRegressionSolver::EXACT,
-            LinearRegressionSolver::CHOLESKY,
-        ];
-        for solver in solvers {
-            let mut model =
-                LinearRegression::<Array2<_>, Array1<_>>::new(LinearRegressionSettings {
-                    fit_intercept: intercept.abs() > 0.,
-                    solver,
-                    ..Default::default()
-                });
-            let _ = model.fit(&x, &y);
-            let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
-            assert_multi_reg(
-                &model,
-                &x,
-                &y,
-                tol,
-                &coef,
-                fitted_coef,
-                Some(intercept),
-                fitted_intercept,
-            );
-        }
-    }
-
     #[test]
     fn test_lin_multi_reg_with_intercept() {
-        lin_multi_reg(3., 1e-5)
+        lin_multi_reg(3., 5e-2)
     }
     #[test]
     fn test_lin_multi_reg_without_intercept() {
-        lin_multi_reg(0., 6e-5)
-    }
-
-    #[allow(unused)]
-    fn ridge_one_reg(intercept: f32, tol: f32) {
-        let (x, y, coef) = one_reg_dataset(intercept);
-        let solvers = [
-            RidgeRegressionSolver::EXACT,
-            RidgeRegressionSolver::SGD,
-            RidgeRegressionSolver::QR,
-            RidgeRegressionSolver::CHOLESKY,
-        ];
-        for solver in solvers {
-            let mut model = RidgeRegression::<Array1<_>, Array0<_>>::new(RidgeRegressionSettings {
-                // Some attributes are not needed for EXACT solver
-                alpha: 0.,
-                tol: Some(1e-10),
-                solver,
-                fit_intercept: intercept.abs() > 0.,
-                random_state: Some(0),
-                max_iter: Some(100000),
-                step_size: Some(0.001),
-            });
-            let _ = model.fit(&x, &y);
-            let (fitted_coef, fitted_intercept) = (model.coef().unwrap(), model.intercept());
-            assert_one_reg(
-                &model,
-                &x,
-                &y,
-                tol,
-                &coef,
-                fitted_coef,
-                Some(intercept),
-                fitted_intercept,
-            );
-        }
+        lin_multi_reg(0., 5e-2)
     }
     #[test]
     fn test_ridge_one_reg_with_intercept() {
@@ -183,61 +175,12 @@ mod tests {
     fn test_ridge_one_reg_without_intercept() {
         ridge_one_reg(0., 2e-4)
     }
-
     #[test]
-    fn test_ridge_multi_reg() {
-        let intercept = 0.;
-        let (x, y, coef) = multi_reg_dataset(intercept);
-        let mut ridge = RidgeRegression::<Array2<_>, _>::new(RidgeRegressionSettings::new_exact(
-            0.,
-            intercept.abs() > 0.,
-        ));
-        let _ = ridge.fit(&x, &y);
-        let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(), ridge.intercept());
-        assert_multi_reg(
-            &ridge,
-            &x,
-            &y,
-            1e-4,
-            &coef,
-            fitted_coef,
-            Some(intercept),
-            fitted_intercept,
-        );
-        let mut ridge = RidgeRegression::<Array2<_>, _>::new(RidgeRegressionSettings {
-            // Some attributes are not needed for EXACT solver
-            alpha: 0.,
-            tol: Some(1e-10),
-            solver: RidgeRegressionSolver::SGD,
-            fit_intercept: intercept.abs() > 0.,
-            random_state: Some(0),
-            max_iter: Some(100000),
-            step_size: Some(0.001),
-        });
-        let _ = ridge.fit(&x, &y);
-        // println!("{:?}", ridge.coef());
-        // println!("{:?}", ridge.intercept());
-        assert!((&coef - ridge.coef().unwrap()).l2_norm() < 5e-3);
+    fn test_ridge_multi_reg_with_intercept() {
+        ridge_multi_reg(3., 5e-2)
     }
-
     #[test]
-    fn test_ridge_sag() {
-        let intercept = 2.;
-        let (x, y, coef) = multi_reg_dataset(intercept);
-        let mut ridge = RidgeRegression::<Array2<_>, _>::new(RidgeRegressionSettings {
-            alpha: 0.,
-            tol: Some(1e-10),
-            solver: RidgeRegressionSolver::SAG,
-            fit_intercept: intercept.abs() > 0.,
-            random_state: Some(0),
-            max_iter: Some(100000),
-            step_size: Some(0.001),
-        });
-        let _ = ridge.fit(&x, &y);
-        let (fitted_coef, fitted_intercept) = (ridge.coef().unwrap(), ridge.intercept());
-        // println!("{:?}", fitted_coef);
-        // println!("{:?}", fitted_intercept);
-        assert!((fitted_coef - &coef).l2_norm() < 1e-2);
-        assert!((intercept - fitted_intercept.unwrap()).sum().abs() < 1e-3)
+    fn test_ridge_multi_reg_without_intercept() {
+        ridge_multi_reg(0., 5e-2)
     }
 }

@@ -34,6 +34,8 @@ where
     (x_centered, x_mean, y_centered, y_mean)
 }
 
+/// Used to compute gradient of the square loss function for linear models (like
+/// linear regression, Ridge regression, etc.)
 pub(crate) fn square_loss_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
 where
     for<'a> Y: Sub<&'a Y, Output = Y>,
@@ -43,7 +45,7 @@ where
     return x.t().dot(&(x.dot(coef) - y));
 }
 
-pub(crate) trait LinearModelSettings {
+pub(crate) trait LinearModelInternal {
     type Scalar;
     fn max_iter(&self) -> Option<usize> {
         None
@@ -54,11 +56,14 @@ pub(crate) trait LinearModelSettings {
     fn rng(&self) -> Option<ChaCha20Rng> {
         None
     }
+    fn n_targets(&self) -> Option<usize> {
+        None
+    }
 }
 
 macro_rules! impl_settings {
     ($settings:ident) => {
-        impl<T: Copy> LinearModelSettings for $settings<T> {
+        impl<T: Copy> LinearModelInternal for $settings<T> {
             type Scalar = T;
             fn max_iter(&self) -> Option<usize> {
                 self.max_iter
@@ -68,6 +73,9 @@ macro_rules! impl_settings {
             }
             fn rng(&self) -> Option<ChaCha20Rng> {
                 self.rng.clone()
+            }
+            fn n_targets(&self) -> Option<usize> {
+                Some(self.n_targets)
             }
         }
     };

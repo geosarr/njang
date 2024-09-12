@@ -89,7 +89,7 @@ where
 {
     fn default() -> Self {
         Self {
-            alpha: T::from_f32(1.).unwrap(),
+            alpha: T::from_f32(0.).unwrap(),
             fit_intercept: true,
             solver: Default::default(),
             tol: Some(T::from_f32(0.0001).unwrap()),
