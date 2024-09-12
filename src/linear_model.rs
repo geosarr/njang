@@ -5,8 +5,9 @@ use core::ops::{Add, Div, Mul, Sub};
 extern crate alloc;
 use crate::traits::{Algebra, Info};
 use alloc::vec::Vec;
+use linear_regression::LinearRegressionInternal;
 pub use linear_regression::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver};
-use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
+use ndarray::{linalg::Dot, s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
     rand::Rng,
@@ -14,6 +15,8 @@ use ndarray_rand::{
     RandomExt,
 };
 use num_traits::{Float, FromPrimitive, Zero};
+use rand_chacha::ChaCha20Rng;
+use ridge_regression::RidgeRegressionInternal;
 pub use ridge_regression::{RidgeRegression, RidgeRegressionSettings, RidgeRegressionSolver};
 
 /// Used to preprocess data for linear models
@@ -31,18 +34,24 @@ where
     (x_centered, x_mean, y_centered, y_mean)
 }
 
+pub(crate) fn square_loss_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
+where
+    for<'a> Y: Sub<&'a Y, Output = Y>,
+    Array2<T>: Dot<Y, Output = Y>,
+    for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
+{
+    return x.t().dot(&(x.dot(coef) - y));
+}
+
 pub(crate) trait LinearModelSettings {
     type Scalar;
     fn max_iter(&self) -> Option<usize> {
         None
     }
-    fn step_size(&self) -> Option<Self::Scalar> {
-        None
-    }
     fn tol(&self) -> Option<Self::Scalar> {
         None
     }
-    fn random_state(&self) -> Option<u32> {
+    fn rng(&self) -> Option<ChaCha20Rng> {
         None
     }
 }
@@ -54,20 +63,17 @@ macro_rules! impl_settings {
             fn max_iter(&self) -> Option<usize> {
                 self.max_iter
             }
-            fn step_size(&self) -> Option<Self::Scalar> {
-                self.step_size
-            }
             fn tol(&self) -> Option<Self::Scalar> {
                 self.tol
             }
-            fn random_state(&self) -> Option<u32> {
-                self.random_state
+            fn rng(&self) -> Option<ChaCha20Rng> {
+                self.rng.clone()
             }
         }
     };
 }
-impl_settings!(LinearRegressionSettings);
-impl_settings!(RidgeRegressionSettings);
+impl_settings!(LinearRegressionInternal);
+impl_settings!(RidgeRegressionInternal);
 
 macro_rules! impl_linalg {
     ($exact_name:ident, $qr_name:ident, $chol_name:ident, $ix:ty) => {

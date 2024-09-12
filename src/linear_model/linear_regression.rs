@@ -1,19 +1,19 @@
-use core::ops::{Add, Mul, Sub};
+use core::ops::{Mul, Sub};
 
 use crate::{
     linear_model::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
     stochastic_gradient_descent,
-    traits::{Container, Algebra},
+    traits::Container,
     RegressionModel,
 };
 use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
 use ndarray_rand::rand_distr::uniform::SampleUniform;
-use num_traits::Float;
+use num_traits::{Float, FromPrimitive};
 
-use super::{randn_1d, randn_2d};
+use super::{randn_1d, randn_2d, square_loss_gradient};
 use rand_chacha::ChaCha20Rng;
 
 use ndarray_rand::rand::SeedableRng;
@@ -104,16 +104,47 @@ where
 {
     pub parameter: LinearRegressionParameter<C, I>,
     pub settings: LinearRegressionSettings<C::Elem>,
+    internal: LinearRegressionInternal<C::Elem>,
+}
+
+/// This is responsible for processing settings, setting default values
+#[derive(Debug, Clone)]
+pub(crate) struct LinearRegressionInternal<T> {
+    pub n_samples: usize,
+    pub n_features: usize,
+    pub n_targets: usize,
+    pub tol: Option<T>,
+    pub step_size: Option<T>,
+    pub rng: Option<ChaCha20Rng>,
+    pub max_iter: Option<usize>,
+}
+
+impl<T> LinearRegressionInternal<T> {
+    pub fn new() -> Self {
+        Self {
+            n_samples: 0,
+            n_features: 0,
+            n_targets: 0,
+            tol: None,
+            step_size: None,
+            rng: None,
+            max_iter: None,
+        }
+    }
 }
 
 impl<C: Container, I> LinearRegression<C, I> {
-    pub fn new(settings: LinearRegressionSettings<C::Elem>) -> Self {
+    pub fn new(settings: LinearRegressionSettings<C::Elem>) -> Self
+    where
+        C::Elem: Float,
+    {
         Self {
             parameter: LinearRegressionParameter {
                 coef: None,
                 intercept: None,
             },
             settings,
+            internal: LinearRegressionInternal::new(),
         }
     }
     /// Coefficients of the model
@@ -123,6 +154,43 @@ impl<C: Container, I> LinearRegression<C, I> {
     /// Intercept of the model
     pub fn intercept(&self) -> Option<&I> {
         self.parameter.intercept.as_ref()
+    }
+    fn set_internal<X: Container>(&mut self, x: &X, y: &C)
+    where
+        C::Elem: Copy + FromPrimitive,
+    {
+        self.set_sample_to_internal(x, y);
+        self.set_settings_to_internal();
+    }
+    fn set_sample_to_internal<X: Container>(&mut self, x: &X, y: &C) {
+        // x should be a 2 dimensional container, and <X as Container>::dimension should
+        // return something like [nrows, ncols] of X.
+        let dim = x.dimension();
+        let (n_samples, n_features) = (dim[0], dim[1]);
+        self.internal.n_features = n_features;
+        self.internal.n_samples = n_samples;
+        let shape = y.dimension();
+        let n_targets = if shape.len() == 2 { shape[1] } else { 1 };
+        self.internal.n_targets = n_targets;
+    }
+    fn set_settings_to_internal(&mut self)
+    where
+        C::Elem: Copy + FromPrimitive,
+    {
+        self.internal.tol = Some(
+            self.settings
+                .tol
+                .unwrap_or(C::Elem::from_f32(1e-4).unwrap()),
+        );
+        self.internal.step_size = Some(
+            self.settings
+                .step_size
+                .unwrap_or(C::Elem::from_f32(1e-3).unwrap()),
+        );
+        let random_state = self.settings.random_state.unwrap_or(0);
+        self.internal.rng = Some(ChaCha20Rng::seed_from_u64(random_state as u64));
+        self.internal.max_iter = Some(self.settings.max_iter.unwrap_or(1000));
+        // sel
     }
 }
 macro_rules! impl_lin_reg {
@@ -155,17 +223,25 @@ macro_rules! impl_lin_reg {
                             $chol_name(xct.dot(&x_centered), xct, &y_centered)?
                         }
                         LinearRegressionSolver::SGD => {
-                            let mut rng = ChaCha20Rng::seed_from_u64(
-                                self.settings.random_state.unwrap_or(0) as u64,
+                            self.set_internal(x, y);
+                            let (n_targets, n_features, rng) = (
+                                self.internal.n_targets,
+                                self.internal.n_features,
+                                self.internal.rng.as_mut().unwrap(),
                             );
-                            let n_features = x.ncols();
-                            let coef = $randn(n_features, y.dimension(), &mut rng);
+                            // Rescale step_size to scale gradients correctly
+                            // [Specific to this algorithm]
+                            self.internal
+                                .step_size
+                                .as_mut()
+                                .map(|s| *s = *s / T::from(n_targets).unwrap());
+                            let coef = $randn(n_features, y.dimension(), rng);
                             stochastic_gradient_descent(
                                 &x_centered,
                                 &y_centered,
                                 coef,
-                                lin_reg_gradient,
-                                &self.settings,
+                                linear_regression_gradient,
+                                &self.internal,
                             )
                         }
                     };
@@ -187,17 +263,25 @@ macro_rules! impl_lin_reg {
                             $chol_name(xt.dot(x), xt, y)?
                         }
                         LinearRegressionSolver::SGD => {
-                            let mut rng = ChaCha20Rng::seed_from_u64(
-                                self.settings.random_state.unwrap_or(0) as u64,
+                            self.set_internal(x, y);
+                            let (n_targets, n_features, rng) = (
+                                self.internal.n_targets,
+                                self.internal.n_features,
+                                self.internal.rng.as_mut().unwrap(),
                             );
-                            let n_features = x.ncols();
-                            let coef = $randn(n_features, y.dimension(), &mut rng);
+                            // Rescale step_size to scale gradients correctly
+                            // [Specific to this algorithm]
+                            self.internal
+                                .step_size
+                                .as_mut()
+                                .map(|s| *s = *s / T::from(n_targets).unwrap());
+                            let coef = $randn(n_features, y.dimension(), rng);
                             stochastic_gradient_descent(
                                 x,
                                 y,
                                 coef,
-                                lin_reg_gradient,
-                                &self.settings,
+                                linear_regression_gradient,
+                                &self.internal,
                             )
                         }
                     };
@@ -225,19 +309,19 @@ macro_rules! impl_lin_reg {
 impl_lin_reg!(Ix1, Ix0, solve_exact1, solve_qr1, solve_chol1, randn_1d);
 impl_lin_reg!(Ix2, Ix1, solve_exact2, solve_qr2, solve_chol2, randn_2d);
 
-fn lin_reg_gradient<T: Lapack, Y>(
+fn linear_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
     y: &Y,
     coef: &Y,
-    settings: &LinearRegressionSettings<T>,
+    settings: &LinearRegressionInternal<T>,
 ) -> Y
 where
-    for<'a> Y: Algebra<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
+    for<'a> Y: Sub<&'a Y, Output = Y> + Mul<T, Output = Y>,
     Array2<T>: Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
 {
     let step_size = settings.step_size.unwrap();
-    return x.t().dot(&(x.dot(coef) - y)) * (-step_size);
+    return square_loss_gradient(x, y, coef) * (-step_size);
 }
 
 #[test]
@@ -261,6 +345,7 @@ fn code() {
             intercept: None,
         },
         settings: settings,
+        internal: LinearRegressionInternal::new(),
     };
     let mut rng = ChaCha20Rng::seed_from_u64(0);
     let p = 10;
@@ -274,6 +359,7 @@ fn code() {
             coef: None,
             intercept: None,
         },
+        internal: LinearRegressionInternal::new(),
         settings: settings,
     };
 

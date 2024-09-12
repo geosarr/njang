@@ -1,6 +1,6 @@
 use crate::l2_norm1;
-use crate::linear_model::{randn_1d, randn_2d};
-use crate::traits::{Algebra, Scalar};
+use crate::linear_model::{randn_1d, randn_2d, square_loss_gradient};
+use crate::traits::{Algebra, Container, Scalar};
 use crate::RegressionModel;
 use crate::{
     linear_model::{
@@ -21,9 +21,8 @@ use core::{
 use ndarray::{linalg::Dot, Array, Array1, Array2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::error::LinalgError;
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
-use num_traits::{Float, FromPrimitive};
+use num_traits::{Float, FromPrimitive, Zero};
 use rand_chacha::ChaCha20Rng;
-use std::collections::HashMap;
 
 use super::{init_grad_1d, init_grad_2d};
 
@@ -123,12 +122,43 @@ pub struct RidgeRegressionParameter<C, I> {
 
 /// L2-norm penalized Ordinary Least Squares.
 #[derive(Debug)]
-pub struct RidgeRegression<C, I, T = f32> {
-    parameter: RidgeRegressionParameter<C, I>,
-    settings: RidgeRegressionSettings<T>,
+pub struct RidgeRegression<C, I>
+where
+    C: Container,
+{
+    pub parameter: RidgeRegressionParameter<C, I>,
+    pub settings: RidgeRegressionSettings<C::Elem>,
+    internal: RidgeRegressionInternal<C::Elem>,
 }
 
-impl<C, I, T> RidgeRegression<C, I, T> {
+#[derive(Debug, Clone)]
+pub(crate) struct RidgeRegressionInternal<T> {
+    pub n_samples: usize,
+    pub n_features: usize,
+    pub n_targets: usize,
+    pub alpha: T,
+    pub tol: Option<T>,
+    pub step_size: Option<T>,
+    pub rng: Option<ChaCha20Rng>,
+    pub max_iter: Option<usize>,
+}
+
+impl<T: Zero> RidgeRegressionInternal<T> {
+    pub fn new() -> Self {
+        Self {
+            n_samples: 0,
+            n_features: 0,
+            n_targets: 0,
+            alpha: T::zero(),
+            tol: None,
+            step_size: None,
+            rng: None,
+            max_iter: None,
+        }
+    }
+}
+
+impl<C: Container, I> RidgeRegression<C, I> {
     /// Creates a new instance of `Self`.
     ///
     /// See also: [RidgeRegressionSettings], [RidgeRegressionSolver],
@@ -137,27 +167,31 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     /// use ndarray::{array, Array0, Array1};
     /// use njang::{RegressionModel, RidgeRegression, RidgeRegressionSettings, RidgeRegressionSolver};
     /// // Initial model
-    /// let mut model =
-    ///     RidgeRegression::<Array1<f32>, Array0<f32>, f32>::new(RidgeRegressionSettings {
-    ///         alpha: 0.01,
-    ///         tol: Some(0.0001),
-    ///         solver: RidgeRegressionSolver::SGD,
-    ///         fit_intercept: true,
-    ///         random_state: Some(123),
-    ///         max_iter: Some(1),
-    ///     });
+    /// let mut model = RidgeRegression::<Array1<f32>, Array0<f32>>::new(RidgeRegressionSettings {
+    ///     alpha: 0.01,
+    ///     tol: Some(0.0001),
+    ///     solver: RidgeRegressionSolver::SGD,
+    ///     fit_intercept: true,
+    ///     random_state: Some(123),
+    ///     max_iter: Some(1),
+    ///     step_size: None,
+    /// });
     /// // Dataset
     /// let x0 = array![[1., 2.], [-3., -4.], [0., 7.], [-2., 5.]];
     /// let y0 = array![0.5, -1., 2., 3.5];
     /// model.fit(&x0, &y0);
     /// ```
-    pub fn new(settings: RidgeRegressionSettings<T>) -> Self {
+    pub fn new(settings: RidgeRegressionSettings<C::Elem>) -> Self
+    where
+        C::Elem: Zero,
+    {
         Self {
             parameter: RidgeRegressionParameter {
                 coef: None,
                 intercept: None,
             },
             settings,
+            internal: RidgeRegressionInternal::new(),
         }
     }
     /// Coefficients of the model
@@ -168,11 +202,48 @@ impl<C, I, T> RidgeRegression<C, I, T> {
     pub fn intercept(&self) -> Option<&I> {
         self.parameter.intercept.as_ref()
     }
+    fn set_internal<X: Container>(&mut self, x: &X, y: &C)
+    where
+        C::Elem: Copy + FromPrimitive,
+    {
+        self.set_sample_to_internal(x, y);
+        self.set_settings_to_internal();
+    }
+    fn set_sample_to_internal<X: Container>(&mut self, x: &X, y: &C) {
+        // x should be a 2 dimensional container, and <X as Container>::dimension should
+        // return something like [nrows, ncols] of X.
+        let dim = x.dimension();
+        let (n_samples, n_features) = (dim[0], dim[1]);
+        self.internal.n_features = n_features;
+        self.internal.n_samples = n_samples;
+        let shape = y.dimension();
+        let n_targets = if shape.len() == 2 { shape[1] } else { 1 };
+        self.internal.n_targets = n_targets;
+    }
+    fn set_settings_to_internal(&mut self)
+    where
+        C::Elem: Copy + FromPrimitive,
+    {
+        self.internal.tol = Some(
+            self.settings
+                .tol
+                .unwrap_or(C::Elem::from_f32(1e-4).unwrap()),
+        );
+        self.internal.step_size = Some(
+            self.settings
+                .step_size
+                .unwrap_or(C::Elem::from_f32(1e-3).unwrap()),
+        );
+        let random_state = self.settings.random_state.unwrap_or(0);
+        self.internal.rng = Some(ChaCha20Rng::seed_from_u64(random_state as u64));
+        self.internal.max_iter = Some(self.settings.max_iter.unwrap_or(1000));
+        // sel
+    }
 }
 
 macro_rules! impl_ridge_reg {
     ($ix:ty, $ix_smaller:ty, $randn:ident, $norm:ident, $init_grad:ident, $grad:ident, $sgd:ident, $sag:ident, $exact_name:ident, $qr_name:ident, $chol_name:ident) => {
-        impl<T> RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T> {
+        impl<T: Clone> RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>> {
             pub(crate) fn init_stochastic_algo(
                 &self,
                 x: &Array2<T>,
@@ -242,7 +313,7 @@ macro_rules! impl_ridge_reg {
                 )
             }
         }
-        impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>, T>
+        impl<T> RegressionModel for RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>>
         where
             T: Scalar<Array2<T>> + Scalar<Array1<T>> + SampleUniform,
         {
@@ -257,12 +328,27 @@ macro_rules! impl_ridge_reg {
                         RidgeRegressionSolver::SGD => {
                             let (alpha_norm, max_iter, tol, samples, coef, _, _, lambda) =
                                 self.init_stochastic_algo(x, y);
+                            self.set_internal(x, y);
+                            let (n_targets, n_features, n_samples, mut rng) = (
+                                self.internal.n_targets,
+                                self.internal.n_features,
+                                self.internal.n_samples,
+                                self.internal.rng.clone().unwrap(),
+                            );
+                            let n_targets_in_t = T::from(n_targets).unwrap();
+                            // Rescale step_size and l2 penalty coefficient to scale gradients
+                            // correctly [Specific to this algorithm]
+                            self.internal
+                                .step_size
+                                .as_mut()
+                                .map(|s| *s = *s / n_targets_in_t);
+                            self.internal.alpha *= n_targets_in_t;
                             stochastic_gradient_descent(
                                 &x_centered,
                                 &y_centered,
                                 coef,
-                                ridge_reg_gradient,
-                                &self.settings,
+                                ridge_regression_gradient,
+                                &self.internal,
                             )
                         }
                         RidgeRegressionSolver::EXACT => {
@@ -641,20 +727,19 @@ where
     coef.clone()
 }
 
-fn ridge_reg_gradient<T: Lapack, Y>(
+fn ridge_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
     y: &Y,
     coef: &Y,
-    settings: &RidgeRegressionSettings<T>,
+    settings: &RidgeRegressionInternal<T>,
 ) -> Y
 where
-    for<'a> Y: Algebra<Elem = T> + Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
+    for<'a> Y: Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
     for<'a> &'a Y: Mul<T, Output = Y>,
     Array2<T>: Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
 {
     let step_size = settings.step_size.unwrap();
     let l2_penalty = settings.alpha;
-    let grad = x.t().dot(&(x.dot(coef) - y)) + coef * l2_penalty;
-    return grad * (-step_size);
+    return (square_loss_gradient(x, y, coef) + coef * l2_penalty) * (-step_size);
 }
