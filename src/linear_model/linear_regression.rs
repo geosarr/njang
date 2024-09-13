@@ -18,7 +18,7 @@ use super::{randn_1d, randn_2d, square_loss_gradient};
 use rand_chacha::ChaCha20Rng;
 
 use ndarray_rand::rand::SeedableRng;
-// use ndarray_rand::RandomExt;
+
 /// Solver to use when fitting a linear regression model (Ordinary Least
 /// Squares, OLS).
 #[derive(Debug, Default, Clone, Copy)]
@@ -193,7 +193,6 @@ impl<C: Container, I> LinearRegression<C, I> {
         let random_state = self.settings.random_state.unwrap_or(0);
         self.internal.rng = Some(ChaCha20Rng::seed_from_u64(random_state as u64));
         self.internal.max_iter = Some(self.settings.max_iter.unwrap_or(1000));
-        // sel
     }
 }
 
@@ -250,17 +249,10 @@ macro_rules! impl_lin_reg {
                         }
                         LinearRegressionSolver::BGD => {
                             self.set_internal(x, y);
-                            let (n_targets, n_features, rng) = (
-                                self.internal.n_targets,
+                            let (n_features, rng) = (
                                 self.internal.n_features,
                                 self.internal.rng.as_mut().unwrap(),
                             );
-                            // Rescale step_size to scale gradients correctly
-                            // [Specific to this algorithm]
-                            self.internal
-                                .step_size
-                                .as_mut()
-                                .map(|s| *s = *s / T::from(n_targets).unwrap());
                             let coef = $randn(n_features, y.dimension(), rng);
                             batch_gradient_descent(
                                 &x_centered,
@@ -393,7 +385,7 @@ fn code() {
     let x = Array::<f32, Ix2>::random_using((100000, p), StandardNormal, &mut rng);
     let coef = Array1::from((1..p + 1).map(|val| val as f32).collect::<Vec<_>>());
     let y = x.dot(&coef);
-    model.fit(&x, &y);
+    let _ = model.fit(&x, &y);
 
     let mut model: LinearRegression<Array2<f32>, Array1<f32>> = LinearRegression {
         parameter: LinearRegressionParameter {
@@ -416,7 +408,7 @@ fn code() {
     .unwrap();
     let intercept = Array1::from_iter((1..r + 1).map(|val| val as f32));
     let y = x.dot(&coef) + intercept;
-    model.fit(&x, &y);
+    let _ = model.fit(&x, &y);
     println!("{:?}", model.coef());
     println!("{:?}", model.intercept());
 }

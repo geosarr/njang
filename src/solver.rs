@@ -8,7 +8,6 @@ use ndarray_rand::rand_distr::{Distribution, Uniform};
 use crate::{
     linear_model::LinearModelInternal,
     traits::{Algebra, Container},
-    LinearRegressionSettings,
 };
 
 pub(crate) fn batch_gradient_descent<T, Y, G, S>(

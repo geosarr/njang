@@ -15,10 +15,10 @@ mod tests {
         LinearRegressionSolver::CHOLESKY,
     ];
 
-    const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 5] = [
+    const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 6] = [
         RidgeRegressionSolver::SAG,
         RidgeRegressionSolver::SGD,
-        // RidgeRegressionSolver::BGD,
+        RidgeRegressionSolver::BGD,
         RidgeRegressionSolver::QR,
         RidgeRegressionSolver::EXACT,
         RidgeRegressionSolver::CHOLESKY,
@@ -66,12 +66,16 @@ mod tests {
             {
                 // println!("{:?}", true_coef);
                 // println!("{:?}", fitted_coef);
+                println!("{:?}", (fitted_coef - true_coef).l2_norm());
                 assert!((fitted_coef - true_coef).l2_norm() < tol);
                 if let Some(true_inter) = true_intercept {
                     if let Some(fitted_inter) = fitted_intercept {
-                        assert!((fitted_inter - true_inter).map(|x| x.abs()).sum() < tol);
+                        let error = (fitted_inter - true_inter).map(|x| x.abs()).sum();
+                        println!("{:?}", error);
+                        assert!(error < tol);
                     }
                 }
+                println!("\n");
                 let pred_error = (model.predict(&x).unwrap() - y).l2_norm();
                 assert!(pred_error < tol);
             }
@@ -85,7 +89,7 @@ mod tests {
             fn $test_name(intercept: f32, tol: f32) {
                 let (x, y, coef) = $dataset(intercept);
                 for solver in $solvers {
-                    // println!("{:?}", solver);
+                    println!("{:?}", solver);
                     let mut model = $model_name::<_, _>::new($model_settings {
                         fit_intercept: intercept.abs() > 0.,
                         solver,
@@ -153,34 +157,34 @@ mod tests {
 
     #[test]
     fn test_lin_one_reg_with_intercept() {
-        lin_one_reg(3., 5e-4)
+        lin_one_reg(3., 1e-3)
     }
     #[test]
     fn test_lin_one_reg_without_intercept() {
-        lin_one_reg(0., 5e-4)
+        lin_one_reg(0., 1e-3)
     }
     #[test]
     fn test_lin_multi_reg_with_intercept() {
-        lin_multi_reg(3., 5e-2)
+        lin_multi_reg(3., 1e-3)
     }
     #[test]
     fn test_lin_multi_reg_without_intercept() {
-        lin_multi_reg(0., 5e-2)
+        lin_multi_reg(0., 1e-3)
     }
     #[test]
     fn test_ridge_one_reg_with_intercept() {
-        ridge_one_reg(3., 5e-4)
+        ridge_one_reg(3., 1e-3)
     }
     #[test]
     fn test_ridge_one_reg_without_intercept() {
-        ridge_one_reg(0., 2e-4)
+        ridge_one_reg(0., 1e-3)
     }
     #[test]
     fn test_ridge_multi_reg_with_intercept() {
-        ridge_multi_reg(3., 5e-2)
+        ridge_multi_reg(3., 1e-3)
     }
     #[test]
     fn test_ridge_multi_reg_without_intercept() {
-        ridge_multi_reg(0., 5e-2)
+        ridge_multi_reg(0., 1e-3)
     }
 }

@@ -1,12 +1,12 @@
 use crate::l2_norm1;
 use crate::linear_model::{randn_1d, randn_2d, square_loss_gradient};
-use crate::traits::{Algebra, Container, Scalar};
+use crate::traits::{Container, Scalar};
 use crate::RegressionModel;
 use crate::{
     linear_model::{
         preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
     },
-    solver::stochastic_gradient_descent,
+    solver::{batch_gradient_descent, stochastic_gradient_descent},
     traits::Info,
 };
 use ndarray::ArrayView2;
@@ -39,6 +39,11 @@ pub enum RidgeRegressionSolver {
     /// may not converge.
     #[default]
     SGD,
+    /// Solves the problem using Batch Gradient Descent
+    ///
+    /// Make sure to standardize the input predictors, otherwise the algorithm
+    /// may not converge.
+    BGD,
     /// Computes the solution:
     /// - `(x.t().dot(x) + alpha * eye).inverse().dot(x.t().dot(y))`
     EXACT,
@@ -326,24 +331,39 @@ macro_rules! impl_ridge_reg {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
                     let coef = match self.settings.solver {
                         RidgeRegressionSolver::SGD => {
-                            let (alpha_norm, max_iter, tol, samples, coef, _, _, lambda) =
-                                self.init_stochastic_algo(x, y);
                             self.set_internal(x, y);
-                            let (n_targets, n_features, n_samples, mut rng) = (
+                            let (n_targets, n_features, n_samples, rng) = (
                                 self.internal.n_targets,
                                 self.internal.n_features,
                                 self.internal.n_samples,
-                                self.internal.rng.clone().unwrap(),
+                                self.internal.rng.as_mut().unwrap(),
                             );
                             let n_targets_in_t = T::from(n_targets).unwrap();
+                            let n_samples_in_t = T::from(n_samples).unwrap();
                             // Rescale step_size and l2 penalty coefficient to scale gradients
                             // correctly [Specific to this algorithm]
                             self.internal
                                 .step_size
                                 .as_mut()
                                 .map(|s| *s = *s / n_targets_in_t);
-                            self.internal.alpha *= n_targets_in_t;
+                            self.internal.alpha *= n_targets_in_t / n_samples_in_t;
+                            let coef = $randn(n_features, y.dimension(), rng);
                             stochastic_gradient_descent(
+                                &x_centered,
+                                &y_centered,
+                                coef,
+                                ridge_regression_gradient,
+                                &self.internal,
+                            )
+                        }
+                        RidgeRegressionSolver::BGD => {
+                            self.set_internal(x, y);
+                            let (n_features, rng) = (
+                                self.internal.n_features,
+                                self.internal.rng.as_mut().unwrap(),
+                            );
+                            let coef = $randn(n_features, y.dimension(), rng);
+                            batch_gradient_descent(
                                 &x_centered,
                                 &y_centered,
                                 coef,
@@ -409,16 +429,29 @@ macro_rules! impl_ridge_reg {
                 } else {
                     let coef = match self.settings.solver {
                         RidgeRegressionSolver::SGD => {
-                            let (alpha_norm, max_iter, tol, samples, coef, _, _, lambda) =
-                                self.init_stochastic_algo(x, y);
-                            $grad(
+                            self.set_internal(x, y);
+                            let (n_targets, n_features, n_samples, rng) = (
+                                self.internal.n_targets,
+                                self.internal.n_features,
+                                self.internal.n_samples,
+                                self.internal.rng.as_mut().unwrap(),
+                            );
+                            let n_targets_in_t = T::from(n_targets).unwrap();
+                            let n_samples_in_t = T::from(n_samples).unwrap();
+                            // Rescale step_size and l2 penalty coefficient to scale gradients
+                            // correctly [Specific to this algorithm]
+                            self.internal
+                                .step_size
+                                .as_mut()
+                                .map(|s| *s = *s / n_targets_in_t);
+                            self.internal.alpha *= n_targets_in_t / n_samples_in_t;
+                            let coef = $randn(n_features, y.dimension(), rng);
+                            stochastic_gradient_descent(
                                 x,
                                 y,
                                 coef,
-                                max_iter,
-                                &samples,
-                                alpha_norm,
-                                ($sgd, $norm, tol, &mut None, &mut None, lambda),
+                                ridge_regression_gradient,
+                                &self.internal,
                             )
                         }
                         RidgeRegressionSolver::EXACT => {
@@ -460,6 +493,21 @@ macro_rules! impl_ridge_reg {
                         RidgeRegressionSolver::CHOLESKY => {
                             let (xt, alpha) = (x.t(), self.settings.alpha);
                             $chol_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
+                        }
+                        RidgeRegressionSolver::BGD => {
+                            self.set_internal(x, y);
+                            let (n_features, rng) = (
+                                self.internal.n_features,
+                                self.internal.rng.as_mut().unwrap(),
+                            );
+                            let coef = $randn(n_features, y.dimension(), rng);
+                            batch_gradient_descent(
+                                x,
+                                y,
+                                coef,
+                                ridge_regression_gradient,
+                                &self.internal,
+                            )
                         }
                     };
                     self.parameter.coef = Some(coef);
@@ -511,30 +559,30 @@ impl_ridge_reg!(
     solve_chol2
 );
 
-fn sgd_updator<T, X, Y>(
-    x: &X,
-    y: &Y,
-    coef: &Y,
-    i: usize,
-    alpha: T,
-    lambda: Option<T>,
-    _gradients: (&mut Option<&mut X>, &mut Option<&mut Y>),
-) -> Y
-where
-    Y: Info<RowOutput = T> + Dot<Y, Output = T> + Add<Y, Output = Y>,
-    for<'a> &'a Y: Sub<Y, Output = Y>,
-    X: Info<RowOutput = Y>,
-    for<'a> T: Sub<T, Output = T> + Copy + Mul<Y, Output = Y> + Mul<&'a Y, Output = Y>,
-{
-    let xi = x.get_row(i);
-    let yi = y.get_row(i);
-    let pre_update = alpha * coef + (xi.dot(coef) - yi) * xi;
-    if let Some(lamb) = lambda {
-        lamb * pre_update
-    } else {
-        pre_update
-    }
-}
+// fn sgd_updator<T, X, Y>(
+//     x: &X,
+//     y: &Y,
+//     coef: &Y,
+//     i: usize,
+//     alpha: T,
+//     lambda: Option<T>,
+//     _gradients: (&mut Option<&mut X>, &mut Option<&mut Y>),
+// ) -> Y
+// where
+//     Y: Info<RowOutput = T> + Dot<Y, Output = T> + Add<Y, Output = Y>,
+//     for<'a> &'a Y: Sub<Y, Output = Y>,
+//     X: Info<RowOutput = Y>,
+//     for<'a> T: Sub<T, Output = T> + Copy + Mul<Y, Output = Y> + Mul<&'a Y,
+// Output = Y>, {
+//     let xi = x.get_row(i);
+//     let yi = y.get_row(i);
+//     let pre_update = alpha * coef + (xi.dot(coef) - yi) * xi;
+//     if let Some(lamb) = lambda {
+//         lamb * pre_update
+//     } else {
+//         pre_update
+//     }
+// }
 
 fn sag_updator<T, X, Y>(
     x: &X,
