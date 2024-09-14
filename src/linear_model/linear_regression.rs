@@ -58,7 +58,7 @@ pub struct LinearRegressionParameter<C, I> {
 
 /// Ordinary Least Squares (OLS).
 ///
-/// Minimization of the L2-norm `||Xb - Y||`<sup/>2</sup> with respect to `b`,
+/// Minimization of the L2-norm `||Xb - Y||`<sup>2</sup> with respect to `b`,
 /// for regressors/predictors `X` and targets `Y`.
 ///
 /// The vector of coefficients satisfies:

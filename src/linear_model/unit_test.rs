@@ -1,6 +1,6 @@
 mod tests {
     use super::super::*;
-    use crate::RegressionModel;
+    use crate::{Regression, RegressionModel};
     extern crate alloc;
     use crate::traits::Algebra;
     use alloc::vec::Vec;
@@ -13,6 +13,15 @@ mod tests {
         LinearRegressionSolver::QR,
         LinearRegressionSolver::EXACT,
         LinearRegressionSolver::CHOLESKY,
+    ];
+
+    const REGRESSION_SOLVERS: [RegressionSolver; 3] = [
+        RegressionSolver::Svd,
+        RegressionSolver::Sgd,
+        RegressionSolver::Bgd,
+        // RegressionSolver::QR,
+        // RegressionSolver::EXACT,
+        // RegressionSolver::CHOLESKY,
     ];
 
     const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 7] = [
@@ -98,6 +107,7 @@ mod tests {
                         tol: Some(1e-10),
                         ..Default::default() // default value of penalties should be 0.
                     });
+                    println!("{:?}", model);
                     let _ = model.fit(&x, &y);
                     let (fitted_coef, fitted_intercept) =
                         (model.coef().unwrap(), model.intercept());
@@ -115,6 +125,43 @@ mod tests {
             }
         };
     }
+    impl_test!(
+        assert_one_reg,
+        one_reg,
+        Regression,
+        RegressionSettings,
+        one_reg_dataset,
+        REGRESSION_SOLVERS,
+        Ix1,
+        Ix0
+    );
+    impl_test!(
+        assert_multi_reg,
+        multi_reg,
+        Regression,
+        RegressionSettings,
+        multi_reg_dataset,
+        REGRESSION_SOLVERS,
+        Ix2,
+        Ix1
+    );
+    #[test]
+    fn test_one_reg_with_intercept() {
+        one_reg(3., 1e-3)
+    }
+    #[test]
+    fn test_one_reg_without_intercept() {
+        one_reg(0., 1e-3)
+    }
+    #[test]
+    fn test_multi_reg_with_intercept() {
+        multi_reg(3., 1e-3)
+    }
+    #[test]
+    fn test_multi_reg_without_intercept() {
+        multi_reg(0., 1e-3)
+    }
+
     impl_test!(
         assert_one_reg,
         lin_one_reg,

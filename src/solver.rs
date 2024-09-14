@@ -29,6 +29,8 @@ where
     G: Fn(&Array2<T>, &Y, &Y, &S) -> Y,
     S: LinearModelInternal<Scalar = T>,
 {
+    // Users have to make sure that these settings are provided in the object
+    // `settings` before using this function
     let (max_iter, tol) = (settings.max_iter().unwrap(), settings.tol().unwrap());
     for _ in 0..max_iter {
         // minus step size should be multiplied to scaled_grad function output.

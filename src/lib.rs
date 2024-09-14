@@ -11,7 +11,7 @@ pub(crate) use utils::{l2_diff, l2_diff2, l2_norm1, l2_norm2};
 
 pub use linear_model::{
     LassoRegression, LassoRegressionSettings, LassoRegressionSolver, LinearRegression,
-    LinearRegressionSettings, LinearRegressionSolver, RidgeRegression, RidgeRegressionSettings,
-    RidgeRegressionSolver,
+    LinearRegressionSettings, LinearRegressionSolver, Regression, RegressionSettings,
+    RegressionSolver, RidgeRegression, RidgeRegressionSettings, RidgeRegressionSolver,
 };
 pub use traits::{Info, RegressionModel};
