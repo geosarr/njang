@@ -1,23 +1,15 @@
-use core::ops::{Mul, Sub};
-
 use crate::{
-    batch_gradient_descent,
-    linear_model::{
-        preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
-    },
-    stochastic_gradient_descent,
-    traits::Container,
-    RegressionModel,
+    linear_model::{cholesky, exact, preprocess, qr, randn_1d, randn_2d, square_loss_gradient},
+    solver::{batch_gradient_descent, stochastic_gradient_descent},
+    traits::{Container, RegressionModel},
 };
+use core::ops::{Mul, Sub};
 use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
+use ndarray_rand::rand::SeedableRng;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
 use num_traits::{Float, FromPrimitive};
-
-use super::{randn_1d, randn_2d, square_loss_gradient};
 use rand_chacha::ChaCha20Rng;
-
-use ndarray_rand::rand::SeedableRng;
 
 /// Solver to use when fitting a linear regression model (Ordinary Least
 /// Squares, OLS).
@@ -75,8 +67,7 @@ pub struct LinearRegressionParameter<C, I> {
 ///
 /// It is able to fit at once many regressions with the same input regressors
 /// `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate.
-/// The same hyperparameter `fit_intercept` applies for all regressions
-/// involved.
+/// The same hyperparameters apply to all regressions involved.
 /// ```
 /// use ndarray::{array, Array1, Array2};
 /// use njang::{
@@ -197,7 +188,7 @@ impl<C: Container, I> LinearRegression<C, I> {
 }
 
 macro_rules! impl_lin_reg {
-    ($ix:ty, $ix_smaller:ty, $exact_name:ident, $qr_name:ident, $chol_name:ident, $randn:ident) => {
+    ($ix:ty, $ix_smaller:ty, $randn:ident) => {
         impl<T> RegressionModel for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
         where
             T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform,
@@ -205,7 +196,7 @@ macro_rules! impl_lin_reg {
             type FitResult = Result<(), LinalgError>;
             type X = Array2<T>;
             type Y = Array<T, $ix>;
-            type PredictResult = Option<Array<T, $ix>>;
+            type PredictResult = Result<Array<T, $ix>, ()>;
             fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
                 if self.settings.fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
@@ -215,15 +206,15 @@ macro_rules! impl_lin_reg {
                         }
                         LinearRegressionSolver::EXACT => {
                             let xct = x_centered.t();
-                            $exact_name(xct.dot(&x_centered), xct, &y_centered)?
+                            exact(xct.dot(&x_centered), xct, &y_centered)?
                         }
                         LinearRegressionSolver::QR => {
                             let xct = x_centered.t();
-                            $qr_name(xct.dot(&x_centered), xct, &y_centered)?
+                            qr(xct.dot(&x_centered), xct, &y_centered)?
                         }
                         LinearRegressionSolver::CHOLESKY => {
                             let xct = x_centered.t();
-                            $chol_name(xct.dot(&x_centered), xct, &y_centered)?
+                            cholesky(xct.dot(&x_centered), xct, &y_centered)?
                         }
                         LinearRegressionSolver::SGD => {
                             self.set_internal(x, y);
@@ -238,7 +229,7 @@ macro_rules! impl_lin_reg {
                                 .step_size
                                 .as_mut()
                                 .map(|s| *s = *s / T::from(n_targets).unwrap());
-                            let coef = $randn(n_features, y.dimension(), rng);
+                            let coef = $randn(&[n_features, n_targets], rng);
                             stochastic_gradient_descent(
                                 &x_centered,
                                 &y_centered,
@@ -249,11 +240,12 @@ macro_rules! impl_lin_reg {
                         }
                         LinearRegressionSolver::BGD => {
                             self.set_internal(x, y);
-                            let (n_features, rng) = (
+                            let (n_targets, n_features, rng) = (
+                                self.internal.n_targets,
                                 self.internal.n_features,
                                 self.internal.rng.as_mut().unwrap(),
                             );
-                            let coef = $randn(n_features, y.dimension(), rng);
+                            let coef = $randn(&[n_features, n_targets], rng);
                             batch_gradient_descent(
                                 &x_centered,
                                 &y_centered,
@@ -270,15 +262,15 @@ macro_rules! impl_lin_reg {
                         LinearRegressionSolver::SVD => x.least_squares(&y)?.solution,
                         LinearRegressionSolver::EXACT => {
                             let xt = x.t();
-                            $exact_name(xt.dot(x), xt, y)?
+                            exact(xt.dot(x), xt, y)?
                         }
                         LinearRegressionSolver::QR => {
                             let xt = x.t();
-                            $qr_name(xt.dot(x), xt, y)?
+                            qr(xt.dot(x), xt, y)?
                         }
                         LinearRegressionSolver::CHOLESKY => {
                             let xt = x.t();
-                            $chol_name(xt.dot(x), xt, y)?
+                            cholesky(xt.dot(x), xt, y)?
                         }
                         LinearRegressionSolver::SGD => {
                             self.set_internal(x, y);
@@ -293,7 +285,7 @@ macro_rules! impl_lin_reg {
                                 .step_size
                                 .as_mut()
                                 .map(|s| *s = *s / T::from(n_targets).unwrap());
-                            let coef = $randn(n_features, y.dimension(), rng);
+                            let coef = $randn(&[n_features, n_targets], rng);
                             stochastic_gradient_descent(
                                 x,
                                 y,
@@ -304,11 +296,12 @@ macro_rules! impl_lin_reg {
                         }
                         LinearRegressionSolver::BGD => {
                             self.set_internal(x, y);
-                            let (n_features, rng) = (
+                            let (n_targets, n_features, rng) = (
+                                self.internal.n_targets,
                                 self.internal.n_features,
                                 self.internal.rng.as_mut().unwrap(),
                             );
-                            let coef = $randn(n_features, y.dimension(), rng);
+                            let coef = $randn(&[n_features, n_targets], rng);
                             batch_gradient_descent(
                                 x,
                                 y,
@@ -326,21 +319,21 @@ macro_rules! impl_lin_reg {
                 if self.settings.fit_intercept {
                     if let Some(ref coef) = &self.parameter.coef {
                         if let Some(ref intercept) = &self.parameter.intercept {
-                            return Some(intercept + x.dot(coef));
+                            return Ok(intercept + x.dot(coef));
                         }
                     }
                 } else {
                     if let Some(ref coef) = &self.parameter.coef {
-                        return Some(x.dot(coef));
+                        return Ok(x.dot(coef));
                     }
                 }
-                None
+                Err(())
             }
         }
     };
 }
-impl_lin_reg!(Ix1, Ix0, solve_exact1, solve_qr1, solve_chol1, randn_1d);
-impl_lin_reg!(Ix2, Ix1, solve_exact2, solve_qr2, solve_chol2, randn_2d);
+impl_lin_reg!(Ix1, Ix0, randn_1d);
+impl_lin_reg!(Ix2, Ix1, randn_2d);
 
 fn linear_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
@@ -355,60 +348,4 @@ where
 {
     let step_size = settings.step_size.unwrap();
     return square_loss_gradient(x, y, coef) * (-step_size);
-}
-
-#[test]
-fn code() {
-    use ndarray::*;
-    use ndarray_rand::rand::SeedableRng;
-    use ndarray_rand::rand_distr::StandardNormal;
-    use ndarray_rand::RandomExt;
-    use rand_chacha::ChaCha20Rng;
-    let settings = LinearRegressionSettings {
-        fit_intercept: true,
-        max_iter: Some(10000),
-        solver: LinearRegressionSolver::SGD,
-        tol: Some(1e-20),
-        random_state: Some(0),
-        step_size: Some(1e-3),
-    };
-    let mut model: LinearRegression<Array1<f32>, Array0<f32>> = LinearRegression {
-        parameter: LinearRegressionParameter {
-            coef: None,
-            intercept: None,
-        },
-        settings: settings,
-        internal: LinearRegressionInternal::new(),
-    };
-    let mut rng = ChaCha20Rng::seed_from_u64(0);
-    let p = 10;
-    let x = Array::<f32, Ix2>::random_using((100000, p), StandardNormal, &mut rng);
-    let coef = Array1::from((1..p + 1).map(|val| val as f32).collect::<Vec<_>>());
-    let y = x.dot(&coef);
-    let _ = model.fit(&x, &y);
-
-    let mut model: LinearRegression<Array2<f32>, Array1<f32>> = LinearRegression {
-        parameter: LinearRegressionParameter {
-            coef: None,
-            intercept: None,
-        },
-        internal: LinearRegressionInternal::new(),
-        settings: settings,
-    };
-
-    let mut rng = ChaCha20Rng::seed_from_u64(0);
-    let p = 10;
-    let x = Array::<f32, Ix2>::random_using((100000, p), StandardNormal, &mut rng);
-    let r = 10;
-    // let x = (&x - x.mean_axis(Axis(0)).unwrap()) / x.std_axis(Axis(0), 0.);
-    let coef = Array2::from_shape_vec(
-        (p, r),
-        (1..p * r + 1).map(|val| val as f32).collect::<Vec<_>>(),
-    )
-    .unwrap();
-    let intercept = Array1::from_iter((1..r + 1).map(|val| val as f32));
-    let y = x.dot(&coef) + intercept;
-    let _ = model.fit(&x, &y);
-    println!("{:?}", model.coef());
-    println!("{:?}", model.intercept());
 }

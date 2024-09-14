@@ -87,6 +87,7 @@ pub trait Algebra: Container {
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
     fn mean(&self) -> Self::Elem;
     fn l2_norm(&self) -> Self::Elem;
+    fn sign(&self) -> Self;
 }
 
 impl<T: Float + FromPrimitive> Algebra for Array1<T> {
@@ -103,6 +104,15 @@ impl<T: Float + FromPrimitive> Algebra for Array1<T> {
     fn l2_norm(&self) -> Self::Elem {
         self.powi(2).sum().sqrt()
     }
+    fn sign(&self) -> Self {
+        self.map(|v| {
+            if v.abs() > T::epsilon() {
+                T::zero()
+            } else {
+                v.signum()
+            }
+        })
+    }
 }
 
 impl<T: Float + FromPrimitive> Algebra for Array2<T> {
@@ -118,6 +128,15 @@ impl<T: Float + FromPrimitive> Algebra for Array2<T> {
     }
     fn l2_norm(&self) -> Self::Elem {
         self.powi(2).sum().sqrt()
+    }
+    fn sign(&self) -> Self {
+        self.map(|v| {
+            if v.abs() > T::epsilon() {
+                T::zero()
+            } else {
+                v.signum()
+            }
+        })
     }
 }
 

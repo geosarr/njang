@@ -15,7 +15,8 @@ mod tests {
         LinearRegressionSolver::CHOLESKY,
     ];
 
-    const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 6] = [
+    const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 7] = [
+        RidgeRegressionSolver::SVD,
         RidgeRegressionSolver::SAG,
         RidgeRegressionSolver::SGD,
         RidgeRegressionSolver::BGD,
@@ -62,7 +63,7 @@ mod tests {
                 true_intercept: Option<f32>,
                 fitted_intercept: Option<&Array<f32, $ix_smaller>>,
             ) where
-                M: RegressionModel<X = Array2<f32>, PredictResult = Option<Array<f32, $ix>>>,
+                M: RegressionModel<X = Array2<f32>, PredictResult = Result<Array<f32, $ix>, ()>>,
             {
                 // println!("{:?}", true_coef);
                 // println!("{:?}", fitted_coef);

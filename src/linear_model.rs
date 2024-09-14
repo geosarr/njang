@@ -1,16 +1,23 @@
+mod lasso_regression;
 mod linear_regression;
+mod macros;
 mod ridge_regression;
 mod unit_test;
-use core::ops::{Add, Div, Mul, Sub};
 extern crate alloc;
-use crate::traits::{Algebra, Info};
+use crate::traits::{Algebra, Container, Info};
 use alloc::vec::Vec;
+use core::ops::{Add, Div, Mul, Sub};
+use lasso_regression::LassoRegressionInternal;
+pub use lasso_regression::{LassoRegression, LassoRegressionSettings, LassoRegressionSolver};
 use linear_regression::LinearRegressionInternal;
 pub use linear_regression::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver};
-use ndarray::{linalg::Dot, s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2};
+pub use macros::*;
+use ndarray::{
+    linalg::Dot, s, Array, Array1, Array2, ArrayView2, Axis, Dimension, Ix0, Ix1, Ix2, ShapeBuilder,
+};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
-    rand::Rng,
+    rand::{Rng, SeedableRng},
     rand_distr::{uniform::SampleUniform, Uniform},
     RandomExt,
 };
@@ -82,77 +89,62 @@ macro_rules! impl_settings {
 }
 impl_settings!(LinearRegressionInternal);
 impl_settings!(RidgeRegressionInternal);
+impl_settings!(LassoRegressionInternal);
+impl_settings!(RegressionInternal);
 
-macro_rules! impl_linalg {
-    ($exact_name:ident, $qr_name:ident, $chol_name:ident, $ix:ty) => {
-        pub(crate) fn $exact_name<T>(
-            x: Array2<T>,
-            z: ArrayView2<T>,
-            y: &Array<T, $ix>,
-        ) -> Result<Array<T, $ix>, LinalgError>
-        where
-            T: Lapack,
-        {
-            match x.inv() {
-                Ok(mat) => Ok(mat.dot(&z).dot(y)),
-                Err(error) => Err(error),
-            }
-        }
-        pub(crate) fn $qr_name<T>(
-            x: Array2<T>,
-            z: ArrayView2<T>,
-            y: &Array<T, $ix>,
-        ) -> Result<Array<T, $ix>, LinalgError>
-        where
-            T: Lapack,
-        {
-            match x.qr() {
-                Ok((q, r)) => match r.inv() {
-                    Ok(inv_r) => Ok(inv_r.dot(&q.t().dot(&z).dot(y))),
-                    Err(error) => Err(error),
-                },
-                Err(error) => Err(error),
-            }
-        }
-        pub(crate) fn $chol_name<T>(
-            x: Array2<T>,
-            z: ArrayView2<T>,
-            y: &Array<T, $ix>,
-        ) -> Result<Array<T, $ix>, LinalgError>
-        where
-            T: Lapack,
-        {
-            match x.cholesky(UPLO::Lower) {
-                Ok(mat) => match mat.inv() {
-                    Ok(inv_m) => Ok(inv_m.t().dot(&inv_m).dot(&z).dot(y)),
-                    Err(error) => Err(error),
-                },
-                Err(error) => Err(error),
-            }
-        }
-    };
+pub(crate) fn exact<T, Y>(x: Array2<T>, z: ArrayView2<T>, y: &Y) -> Result<Y, LinalgError>
+where
+    T: Lapack,
+    Array2<T>: Dot<Y, Output = Y> + for<'a> Dot<ArrayView2<'a, T>, Output = Array2<T>>,
+{
+    match x.inv() {
+        Ok(mat) => Ok(mat.dot(&z).dot(y)),
+        Err(error) => Err(error),
+    }
 }
-impl_linalg!(solve_exact1, solve_qr1, solve_chol1, Ix1);
-impl_linalg!(solve_exact2, solve_qr2, solve_chol2, Ix2);
+pub(crate) fn qr<T, Y>(x: Array2<T>, z: ArrayView2<T>, y: &Y) -> Result<Y, LinalgError>
+where
+    T: Lapack,
+    Array2<T>: Dot<Y, Output = Y>,
+{
+    match x.qr() {
+        Ok((q, r)) => match r.inv() {
+            Ok(inv_r) => Ok(inv_r.dot(&q.t().dot(&z).dot(y))),
+            Err(error) => Err(error),
+        },
+        Err(error) => Err(error),
+    }
+}
+pub(crate) fn cholesky<T, Y>(x: Array2<T>, z: ArrayView2<T>, y: &Y) -> Result<Y, LinalgError>
+where
+    T: Lapack,
+    Array2<T>: Dot<Y, Output = Y> + for<'a> Dot<ArrayView2<'a, T>, Output = Array2<T>>,
+{
+    match x.cholesky(UPLO::Lower) {
+        Ok(mat) => match mat.inv() {
+            Ok(inv_m) => Ok(inv_m.t().dot(&inv_m).dot(&z).dot(y)),
+            Err(error) => Err(error),
+        },
+        Err(error) => Err(error),
+    }
+}
 
 pub(crate) fn randn_1d<T: Float + SampleUniform, R: Rng>(
-    n: usize,
-    _m: &[usize],
+    m: &[usize],
     rng: &mut R,
 ) -> Array<T, Ix1> {
-    let sqrt_n = T::from(n).unwrap().sqrt();
+    let sqrt_n = T::from(m[0]).unwrap().sqrt();
     let high = T::one() / sqrt_n;
-    Array::<T, Ix1>::random_using(n, Uniform::new_inclusive(-high, high), rng)
+    Array::<T, Ix1>::random_using(m[0], Uniform::new_inclusive(-high, high), rng)
 }
 
 pub(crate) fn randn_2d<T: Float + SampleUniform, R: Rng>(
-    n: usize,
     m: &[usize],
     rng: &mut R,
 ) -> Array<T, Ix2> {
-    let sqrt_n = T::from(n).unwrap().sqrt();
-    let high = T::one() / sqrt_n;
-    Array::<T, Ix2>::random_using((n, m[1]), Uniform::new_inclusive(-high, high), rng)
+    let sqrt = T::from(m[0]).unwrap().sqrt();
+    let high = T::one() / sqrt;
+    Array::<T, Ix2>::random_using((m[0], m[1]), Uniform::new_inclusive(-high, high), rng)
 }
 
 pub(crate) fn init_grad_1d<T>(

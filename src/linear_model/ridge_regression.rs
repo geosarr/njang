@@ -3,9 +3,7 @@ use crate::linear_model::{randn_1d, randn_2d, square_loss_gradient};
 use crate::traits::{Container, Scalar};
 use crate::RegressionModel;
 use crate::{
-    linear_model::{
-        preprocess, solve_chol1, solve_chol2, solve_exact1, solve_exact2, solve_qr1, solve_qr2,
-    },
+    linear_model::{cholesky, exact, preprocess, qr},
     solver::{batch_gradient_descent, stochastic_gradient_descent},
     traits::Info,
 };
@@ -19,7 +17,7 @@ use core::{
     ops::{Add, Div, Mul, Sub},
 };
 use ndarray::{linalg::Dot, Array, Array1, Array2, Axis, Ix0, Ix1, Ix2};
-use ndarray_linalg::error::LinalgError;
+use ndarray_linalg::{error::LinalgError, LeastSquaresSvd};
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
 use num_traits::{Float, FromPrimitive, Zero};
 use rand_chacha::ChaCha20Rng;
@@ -31,7 +29,7 @@ use super::{init_grad_1d, init_grad_2d};
 ///
 /// Here `alpha` is the magnitude of the penalty and `eye` is the identity
 /// matrix.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub enum RidgeRegressionSolver {
     /// Solves the problem using Stochastic Gradient Descent
     ///
@@ -44,6 +42,8 @@ pub enum RidgeRegressionSolver {
     /// Make sure to standardize the input predictors, otherwise the algorithm
     /// may not converge.
     BGD,
+    /// Solves the problem using Singular Value Decomposition
+    SVD,
     /// Computes the solution:
     /// - `(x.t().dot(x) + alpha * eye).inverse().dot(x.t().dot(y))`
     EXACT,
@@ -77,7 +77,7 @@ pub enum RidgeRegressionSolver {
 ///     - No impact on the other algorithms.
 /// - **random_state**: seed of random generators.
 /// - **max_iter**: maximum number of iterations.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RidgeRegressionSettings<T> {
     pub alpha: T,
     pub fit_intercept: bool,
@@ -242,12 +242,11 @@ impl<C: Container, I> RidgeRegression<C, I> {
         let random_state = self.settings.random_state.unwrap_or(0);
         self.internal.rng = Some(ChaCha20Rng::seed_from_u64(random_state as u64));
         self.internal.max_iter = Some(self.settings.max_iter.unwrap_or(1000));
-        // sel
     }
 }
 
 macro_rules! impl_ridge_reg {
-    ($ix:ty, $ix_smaller:ty, $randn:ident, $norm:ident, $init_grad:ident, $grad:ident, $sgd:ident, $sag:ident, $exact_name:ident, $qr_name:ident, $chol_name:ident) => {
+    ($ix:ty, $ix_smaller:ty, $randn:ident, $norm:ident, $init_grad:ident, $grad:ident, $sag:ident) => {
         impl<T: Clone> RidgeRegression<Array<T, $ix>, Array<T, $ix_smaller>> {
             pub(crate) fn init_stochastic_algo(
                 &self,
@@ -269,7 +268,12 @@ macro_rules! impl_ridge_reg {
                 let mut rng =
                     ChaCha20Rng::seed_from_u64(self.settings.random_state.unwrap_or(0).into());
                 let (n_samples, n_features) = (x.nrows(), x.ncols());
-                let coef = $randn(n_features, y.shape(), &mut rng);
+                let n_targets = if y.shape().len() == 2 {
+                    y.shape()[1]
+                } else {
+                    1
+                };
+                let coef = $randn(&[n_features, n_targets], &mut rng);
                 let nf = T::from(n_samples).unwrap(); // critical when number of samples > int(f32::MAX) ?
                 let alpha_norm = self.settings.alpha / nf;
                 let (gradients, sum_gradients) = match self.settings.solver {
@@ -325,7 +329,7 @@ macro_rules! impl_ridge_reg {
             type FitResult = Result<(), LinalgError>;
             type X = Array2<T>;
             type Y = Array<T, $ix>;
-            type PredictResult = Option<Array<T, $ix>>;
+            type PredictResult = Result<Array<T, $ix>, ()>;
             fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
                 if self.settings.fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
@@ -347,7 +351,7 @@ macro_rules! impl_ridge_reg {
                                 .as_mut()
                                 .map(|s| *s = *s / n_targets_in_t);
                             self.internal.alpha *= n_targets_in_t / n_samples_in_t;
-                            let coef = $randn(n_features, y.dimension(), rng);
+                            let coef = $randn(&[n_features, n_targets], rng);
                             stochastic_gradient_descent(
                                 &x_centered,
                                 &y_centered,
@@ -358,11 +362,13 @@ macro_rules! impl_ridge_reg {
                         }
                         RidgeRegressionSolver::BGD => {
                             self.set_internal(x, y);
-                            let (n_features, rng) = (
+                            let (n_targets, n_features, n_samples, rng) = (
+                                self.internal.n_targets,
                                 self.internal.n_features,
+                                self.internal.n_samples,
                                 self.internal.rng.as_mut().unwrap(),
                             );
-                            let coef = $randn(n_features, y.dimension(), rng);
+                            let coef = $randn(&[n_features, n_targets], rng);
                             batch_gradient_descent(
                                 &x_centered,
                                 &y_centered,
@@ -371,9 +377,16 @@ macro_rules! impl_ridge_reg {
                                 &self.internal,
                             )
                         }
+                        RidgeRegressionSolver::SVD => {
+                            let (xct, alpha) = (x_centered.t(), self.settings.alpha);
+                            let xctyc = xct.dot(&y_centered);
+                            (xct.dot(&x_centered) + alpha * Array2::eye(x.ncols()))
+                                .least_squares(&xctyc)?
+                                .solution
+                        }
                         RidgeRegressionSolver::EXACT => {
                             let (xct, alpha) = (x_centered.t(), self.settings.alpha);
-                            $exact_name(
+                            exact(
                                 xct.dot(&x_centered) + alpha * Array2::eye(x.ncols()),
                                 xct,
                                 &y_centered,
@@ -381,7 +394,7 @@ macro_rules! impl_ridge_reg {
                         }
                         RidgeRegressionSolver::QR => {
                             let (xct, alpha) = (x_centered.t(), self.settings.alpha);
-                            $qr_name(
+                            qr(
                                 xct.dot(&x_centered) + alpha * Array2::eye(x.ncols()),
                                 xct,
                                 &y_centered,
@@ -417,7 +430,7 @@ macro_rules! impl_ridge_reg {
                         }
                         RidgeRegressionSolver::CHOLESKY => {
                             let (xct, alpha) = (x_centered.t(), self.settings.alpha);
-                            $chol_name(
+                            cholesky(
                                 xct.dot(&x_centered) + alpha * Array2::eye(x.ncols()),
                                 xct,
                                 &y_centered,
@@ -445,7 +458,7 @@ macro_rules! impl_ridge_reg {
                                 .as_mut()
                                 .map(|s| *s = *s / n_targets_in_t);
                             self.internal.alpha *= n_targets_in_t / n_samples_in_t;
-                            let coef = $randn(n_features, y.dimension(), rng);
+                            let coef = $randn(&[n_features, n_targets], rng);
                             stochastic_gradient_descent(
                                 x,
                                 y,
@@ -454,13 +467,37 @@ macro_rules! impl_ridge_reg {
                                 &self.internal,
                             )
                         }
+                        RidgeRegressionSolver::BGD => {
+                            self.set_internal(x, y);
+                            let (n_targets, n_features, n_samples, rng) = (
+                                self.internal.n_targets,
+                                self.internal.n_features,
+                                self.internal.n_samples,
+                                self.internal.rng.as_mut().unwrap(),
+                            );
+                            let coef = $randn(&[n_features, n_targets], rng);
+                            batch_gradient_descent(
+                                x,
+                                y,
+                                coef,
+                                ridge_regression_gradient,
+                                &self.internal,
+                            )
+                        }
+                        RidgeRegressionSolver::SVD => {
+                            let (xt, alpha) = (x.t(), self.settings.alpha);
+                            let xty = xt.dot(y);
+                            (xt.dot(x) + alpha * Array2::eye(x.ncols()))
+                                .least_squares(&xty)?
+                                .solution
+                        }
                         RidgeRegressionSolver::EXACT => {
                             let (xt, alpha) = (x.t(), self.settings.alpha);
-                            $exact_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
+                            exact(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
                         }
                         RidgeRegressionSolver::QR => {
                             let (xt, alpha) = (x.t(), self.settings.alpha);
-                            $qr_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
+                            qr(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
                         }
                         RidgeRegressionSolver::SAG => {
                             let (
@@ -492,22 +529,7 @@ macro_rules! impl_ridge_reg {
                         }
                         RidgeRegressionSolver::CHOLESKY => {
                             let (xt, alpha) = (x.t(), self.settings.alpha);
-                            $chol_name(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
-                        }
-                        RidgeRegressionSolver::BGD => {
-                            self.set_internal(x, y);
-                            let (n_features, rng) = (
-                                self.internal.n_features,
-                                self.internal.rng.as_mut().unwrap(),
-                            );
-                            let coef = $randn(n_features, y.dimension(), rng);
-                            batch_gradient_descent(
-                                x,
-                                y,
-                                coef,
-                                ridge_regression_gradient,
-                                &self.internal,
-                            )
+                            cholesky(xt.dot(x) + alpha * Array2::eye(x.ncols()), xt, y)?
                         }
                     };
                     self.parameter.coef = Some(coef);
@@ -518,15 +540,15 @@ macro_rules! impl_ridge_reg {
                 if self.settings.fit_intercept {
                     if let Some(ref coef) = &self.parameter.coef {
                         if let Some(ref intercept) = &self.parameter.intercept {
-                            return Some(intercept + x.dot(coef));
+                            return Ok(intercept + x.dot(coef));
                         }
                     }
                 } else {
                     if let Some(ref coef) = &self.parameter.coef {
-                        return Some(x.dot(coef));
+                        return Ok(x.dot(coef));
                     }
                 }
-                None
+                Err(())
             }
         }
     };
@@ -538,11 +560,7 @@ impl_ridge_reg!(
     l2_norm1,
     init_grad_1d,
     grad_1d,
-    sgd_updator,
-    sag_updator,
-    solve_exact1,
-    solve_qr1,
-    solve_chol1
+    sag_updator
 );
 
 impl_ridge_reg!(
@@ -552,11 +570,7 @@ impl_ridge_reg!(
     l2_norm1,
     init_grad_2d,
     grad_2d,
-    sgd_updator,
-    sag_updator,
-    solve_exact2,
-    solve_qr2,
-    solve_chol2
+    sag_updator
 );
 
 // fn sgd_updator<T, X, Y>(
@@ -790,4 +804,63 @@ where
     let step_size = settings.step_size.unwrap();
     let l2_penalty = settings.alpha;
     return (square_loss_gradient(x, y, coef) + coef * l2_penalty) * (-step_size);
+}
+
+#[test]
+fn code() {
+    use ndarray::*;
+    use ndarray_rand::rand::SeedableRng;
+    use ndarray_rand::rand_distr::StandardNormal;
+    use ndarray_rand::RandomExt;
+    use rand_chacha::ChaCha20Rng;
+    let settings = RidgeRegressionSettings {
+        alpha: 0.1,
+        fit_intercept: true,
+        max_iter: Some(10000),
+        solver: RidgeRegressionSolver::SGD,
+        tol: Some(1e-20),
+        random_state: Some(0),
+        step_size: Some(1e-3),
+    };
+    let mut model: RidgeRegression<Array1<f32>, Array0<f32>> = RidgeRegression {
+        parameter: RidgeRegressionParameter {
+            coef: None,
+            intercept: None,
+        },
+        settings: settings.clone(),
+        internal: RidgeRegressionInternal::new(),
+    };
+    let mut rng = ChaCha20Rng::seed_from_u64(0);
+    let p = 100;
+    let x = Array::<f32, Ix2>::random_using((10, p), StandardNormal, &mut rng);
+    let coef = Array1::from((1..p + 1).map(|val| val as f32).collect::<Vec<_>>());
+    let y = x.dot(&coef);
+    let _ = model.fit(&x, &y);
+    println!("coef:\n{:?}", model.coef());
+    println!("intercept:\n{:?}\n\n", model.intercept());
+
+    // let mut model: RidgeRegression<Array2<f32>, Array1<f32>> =
+    // RidgeRegression {     parameter: RidgeRegressionParameter {
+    //         coef: None,
+    //         intercept: None,
+    //     },
+    //     internal: RidgeRegressionInternal::new(),
+    //     settings: settings,
+    // };
+
+    // let mut rng = ChaCha20Rng::seed_from_u64(0);
+    // let p = 10;
+    // let x = Array::<f32, Ix2>::random_using((100000, p), StandardNormal, &mut
+    // rng); let r = 10;
+    // // let x = (&x - x.mean_axis(Axis(0)).unwrap()) / x.std_axis(Axis(0),
+    // 0.); let coef = Array2::from_shape_vec(
+    //     (p, r),
+    //     (1..p * r + 1).map(|val| val as f32).collect::<Vec<_>>(),
+    // )
+    // .unwrap();
+    // let intercept = Array1::from_iter((1..r + 1).map(|val| val as f32));
+    // let y = x.dot(&coef) + intercept;
+    // let _ = model.fit(&x, &y);
+    // println!("coef:\n{:?}", model.coef());
+    // println!("intercept:\n{:?}\n\n", model.intercept());
 }
