@@ -39,7 +39,7 @@ pub enum RegressionSolver {
     /// Make sure to standardize the input predictors, otherwise the algorithm
     /// may not converge.
     Bgd,
-    // /// Solves the problem Stochastic Average Gradient
+    // /// Uses Stochastic Average Gradient
     // ///
     // /// Make sure to standardize the input predictors, otherwise the algorithm
     // /// may not converge.
@@ -76,56 +76,64 @@ impl<T> RegressionInternal<T> {
     }
 }
 
-/// Hyperparameters used in a regression model
+/// Hyperparameters used in a regression model.
 ///
-/// - **fit_intercept**: `true` means fit with an intercept, `false` without an
-///   intercept.
-///     - The matrix [coef][`Regression`] of non-intercept weights satisfies:
-///         - if `fit_intercept = false`, then the prediction of a sample `x` is
-///           given by `x.dot(coef)`
-///         - if `fit_intercept = true`, then the prediction of a sample `x` is
-///           given by `x.dot(coef) + intercept`
-///     - where `intercept = Y_mean - X_mean.dot(coef)`, with `X_mean`
-///       designating the average of the training predictors `X` (i.e features
-///       mean) and `Y_mean` designating the average(s) of target(s) `Y`, `dot`
-///       is the matrix multiplication.
-/// - **solver**: optimization method, see [`RegressionSolver`].
-/// - **l1_penalty**: if is `None`, then no L1-penalty is added to the loss
-///   objective function. Otherwise if it is equal to `Some(value)`, then
-/// `value * ||coef||`<sub>1</sub> is added to the loss objective function.
-/// Instead of setting `l1_penalty = Some(0.)`, it may be preferable to set
-/// `l1_penalty = None` to avoid useless computations and numerical issues.
-/// - **l2_penalty**: if is `None`, then no L2-penalty is added to the loss
-///   objective function. Otherwise if it is equal to `Some(value)`, then `0.5 *
-///   value * ||coef||`<sub>2</sub><sup>2</sup> is added to the loss objective
-///   function. Instead of setting `l2_penalty = Some(0.)`, it may be preferable
-///   to set `l2_penalty = None` to avoid useless computations and numerical
-///   issues.
-/// - **tol**: tolerance parameter:
-///     - Gradient descent solvers (like [Sgd][`RegressionSolver::Sgd`],
-///       [Bgd][`RegressionSolver::Bgd`], etc) stop when the relative variation
-///       of consecutive iterates is lower than **tol**, that is:
-///         - `||coef_next - coef_curr||`<sub>2</sub> `<= tol *
-///           ||coef_curr||`<sub>2</sub>
-///     - No impact on the other algorithms:
-///         - [Exact][`RegressionSolver::Exact`]
-///         - [Svd][`RegressionSolver::Svd`]
-///         - [Qr][`RegressionSolver::Qr`]
-///         - [Cholesky][`RegressionSolver::Cholesky`]
-/// - **random_state**: seed of random generators used in gradient descent
-///   algorithms.
-/// - **max_iter**: maximum number of iterations used in  gradient descent
-///   algorithms.
-// #[derive(Debug, Default, Clone, Copy)]
+/// **It is important to note** that the fitted model depends on how users set
+/// the fields `*_penalty`:
+/// - if `l1_penalty = None` and `l2_penalty = None`, then the fitted model is
+///   **Linear regression** (without penalty).
+/// - if `l1_penalty = None` and `l2_penalty = Some(value)`, then the fitted
+///   model is **Ridge regression**.
+/// - if `l1_penalty = Some(value)` and `l2_penalty = None`, then the fitted
+///   model is **Lasso regression**.
+/// - otherwise (i.e `l1_penalty = Some(value)` and `l2_penalty = Some(value)`),
+///   then the fitted model is **Elastic Net regression**.
 #[derive(Debug, Clone, Copy)]
 pub struct RegressionSettings<T> {
+    /// If it is `true` then the model fits with an intercept, `false` without
+    /// an intercept. The matrix [coef][`Regression`] of non-intercept weights
+    /// satisfies:
+    /// - if `fit_intercept = false`, then the prediction of a sample `x` is
+    ///   given by `x.dot(coef)`
+    /// - if `fit_intercept = true`, then the prediction of a sample `x` is
+    ///   given by `x.dot(coef) + intercept`
+    /// where `intercept = Y_mean - X_mean.dot(coef)`, with `X_mean`
+    /// designating the average of the training predictors `X` (i.e features
+    /// mean) and `Y_mean` designating the average(s) of target(s) `Y`, `dot`
+    /// is the matrix multiplication.
     pub fit_intercept: bool,
+    /// Optimization method, see [`RegressionSolver`].
     pub solver: RegressionSolver,
+    /// If it is `None`, then no L1-penalty is added to the loss objective
+    /// function. Otherwise, if it is equal to `Some(value)`, then `value *
+    /// ||coef||`<sub>1</sub> is added to the loss objective function. Instead
+    /// of setting `l1_penalty = Some(0.)`, it may be preferable to set
+    /// `l1_penalty = None` to avoid useless computations and numerical issues.
     pub l1_penalty: Option<T>, // for Lasso Regression
+    /// If it is `None`, then no L2-penalty is added to the loss objective
+    /// function. Otherwise, if it is equal to `Some(value)`, then `0.5 *
+    /// value * ||coef||`<sub>2</sub><sup>2</sup> is added to the loss objective
+    /// function. Instead of setting `l2_penalty = Some(0.)`, it may be
+    /// preferable to set `l2_penalty = None` to avoid useless computations
+    /// and numerical issues.
     pub l2_penalty: Option<T>, // for Ridge Regression
+    /// Tolerance parameter.
+    /// - Gradient descent solvers (like [Sgd][`RegressionSolver::Sgd`],
+    ///   [Bgd][`RegressionSolver::Bgd`], etc) stop when the relative variation
+    ///   of consecutive iterates is lower than **tol**, that is:
+    ///     - `||coef_next - coef_curr||`<sub>2</sub> `<= tol *
+    ///       ||coef_curr||`<sub>2</sub>
+    /// - No impact on the other algorithms:
+    ///     - [Exact][`RegressionSolver::Exact`]
+    ///     - [Svd][`RegressionSolver::Svd`]
+    ///     - [Qr][`RegressionSolver::Qr`]
+    ///     - [Cholesky][`RegressionSolver::Cholesky`]
     pub tol: Option<T>,
+    /// Step size used in gradient descent algorithms.
     pub step_size: Option<T>,
+    /// Seed of random generators used in gradient descent algorithms.
     pub random_state: Option<u32>,
+    /// Maximum number of iterations used in gradient descent algorithms.
     pub max_iter: Option<usize>,
 }
 
@@ -173,17 +181,8 @@ pub struct RegressionParameter<C, I> {
 /// multiplication.
 ///
 /// **It is important to note** that the fitted model depends on how users set
-/// the fields `*_penalty` in [RegressionSettings]:
-/// - if `l1_penalty = None` and `l2_penalty = None`, then the fitted model is
-///   **Linear regression** (without penalty).
-/// - if `l1_penalty = None` and `l2_penalty = Some(value)`, then the fitted
-///   model is **Ridge regression**.
-/// - if `l1_penalty = Some(value)` and `l2_penalty = None`, then the fitted
-///   model is **Lasso regression**.
-/// - otherwise (i.e `l1_penalty = Some(value)` and `l2_penalty = Some(value)`),
-///   then the fitted model is **Elastic Net regression**.
-///
-///
+/// the fields `*_penalty` in [RegressionSettings]. See [RegressionSettings] for
+/// more details.
 ///
 /// It is able to fit at once many regressions with the same input predictors
 /// `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate. **In this
@@ -460,7 +459,7 @@ macro_rules! impl_regression {
                             x,
                             y,
                             coef,
-                            self.gradient_function(), // TODO change
+                            self.gradient_function(),
                             &self.internal,
                         ))
                     }
@@ -482,7 +481,7 @@ macro_rules! impl_regression {
                             x,
                             y,
                             coef,
-                            self.gradient_function(), // TODO change
+                            self.gradient_function(),
                             &self.internal,
                         ))
                     }

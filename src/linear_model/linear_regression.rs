@@ -37,9 +37,6 @@ pub enum LinearRegressionSolver {
 ///   intercept.
 /// - **solver**: optimization method see [`LinearRegressionSolver`].
 /// - etc
-/// ```
-/// panic!("Add doc")
-/// ```
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LinearRegressionSettings<T> {
     pub fit_intercept: bool,
