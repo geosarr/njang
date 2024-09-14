@@ -21,27 +21,43 @@ const DEFAULT_MAX_ITER: usize = 1000;
 #[derive(Debug, Default, Clone, Copy)]
 pub enum RegressionSolver {
     /// Uses Singular Value Decomposition
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
     Svd,
     /// Computes the exact solution
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
     Exact,
     /// Uses QR decomposition to solve the problem.
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
     Qr,
     /// Uses Cholesky decomposition
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
     Cholesky,
     /// Uses Stochastic Gradient Descent
     ///
-    /// Make sure to standardize the input predictors, otherwise the algorithm
-    /// may not converge.
+    /// The user should standardize the input predictors, otherwise the
+    /// algorithm may not converge.
+    ///
+    /// **This solver supports all models.**
     #[default]
     Sgd,
     /// Uses Batch Gradient Descent
     ///
-    /// Make sure to standardize the input predictors, otherwise the algorithm
-    /// may not converge.
+    /// The user should standardize the input predictors, otherwise the
+    /// algorithm may not converge.
+    ///
+    /// **This solver supports all models.**
     Bgd,
     // /// Uses Stochastic Average Gradient
     // ///
-    // /// Make sure to standardize the input predictors, otherwise the algorithm
+    // /// The user should standardize the input predictors, otherwise the algorithm
     // /// may not converge.
     // SAG,
 }
@@ -78,8 +94,8 @@ impl<T> RegressionInternal<T> {
 
 /// Hyperparameters used in a regression model.
 ///
-/// **It is important to note** that the fitted model depends on how users set
-/// the fields `*_penalty`:
+/// **It is important to note** that the fitted model depends on how the user
+/// sets the fields `*_penalty`:
 /// - if `l1_penalty = None` and `l2_penalty = None`, then the fitted model is
 ///   **Linear regression** (without penalty).
 /// - if `l1_penalty = None` and `l2_penalty = Some(value)`, then the fitted
@@ -180,9 +196,9 @@ pub struct RegressionParameter<C, I> {
 /// regressors/predictors `X` and targets `Y`, dot designates the matrix
 /// multiplication.
 ///
-/// **It is important to note** that the fitted model depends on how users set
-/// the fields `*_penalty` in [RegressionSettings]. See [RegressionSettings] for
-/// more details.
+/// **It is important to note** that the fitted model depends on how the user
+/// sets the fields `*_penalty` in [RegressionSettings]. See
+/// [RegressionSettings] for more details.
 ///
 /// It is able to fit at once many regressions with the same input predictors
 /// `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate. **In this
