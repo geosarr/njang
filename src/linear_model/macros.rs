@@ -175,46 +175,6 @@ impl<C: Container, I> Regression<C, I> {
         let n_targets = if shape.len() == 2 { shape[1] } else { 1 };
         self.internal.n_targets = n_targets;
     }
-    fn set_l1_penalty_to_internal(&mut self)
-    where
-        C::Elem: Copy + FromPrimitive,
-    {
-        self.internal.l1_penalty = Some(
-            self.settings
-                .l1_penalty
-                .unwrap_or(C::Elem::from_f32(1.).unwrap()),
-        );
-    }
-    fn set_l2_penalty_to_internal(&mut self)
-    where
-        C::Elem: Copy + FromPrimitive,
-    {
-        self.internal.l2_penalty = Some(
-            self.settings
-                .l2_penalty
-                .unwrap_or(C::Elem::from_f32(1.).unwrap()),
-        );
-    }
-    fn set_tol_to_internal(&mut self)
-    where
-        C::Elem: Copy + FromPrimitive,
-    {
-        self.internal.tol = Some(
-            self.settings
-                .tol
-                .unwrap_or(C::Elem::from_f32(1e-4).unwrap()),
-        );
-    }
-    fn set_step_size_to_internal(&mut self)
-    where
-        C::Elem: Copy + FromPrimitive,
-    {
-        self.internal.step_size = Some(
-            self.settings
-                .step_size
-                .unwrap_or(C::Elem::from_f32(1e-3).unwrap()),
-        );
-    }
     fn set_rng_to_internal(&mut self) {
         let random_state = self.settings.random_state.unwrap_or(0);
         self.internal.rng = Some(ChaCha20Rng::seed_from_u64(random_state as u64));
@@ -222,77 +182,238 @@ impl<C: Container, I> Regression<C, I> {
     fn set_max_iter_to_internal(&mut self) {
         self.internal.max_iter = Some(self.settings.max_iter.unwrap_or(1000));
     }
-}
-
-fn solve<T, D, R>(
-    x: &Array2<T>,
-    y: &Array<T, D>,
-    settings: RegressionSettings<T>,
-    internal: &mut RegressionInternal<T>,
-    rand_init: R,
-) -> Result<Array<T, D>, LinalgError>
-where
-    T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform,
-    R: Fn(&[usize], &mut ChaCha20Rng) -> Array<T, D>,
-    D: Dimension,
-    Array2<T>: LeastSquaresSvd<OwnedRepr<T>, T, D> + Dot<Array<T, D>, Output = Array<T, D>>,
-    for<'a> ArrayView2<'a, T>: Dot<Array<T, D>, Output = Array<T, D>>,
-    Array<T, D>: Algebra<Elem = T, SelectionOutput = Array<T, D>>,
-{
-    match settings.solver {
-        RegressionSolver::Svd => Ok(x.least_squares(y)?.solution),
-        // RegressionSolver::Exact => {
-        //     let xct = x.t();
-        //     exact(xct.dot(&x), xct, &y)?
-        // }
-        // RegressionSolver::Qr => {
-        //     let xct = x.t();
-        //     qr(xct.dot(&x), xct, &y)?
-        // }
-        // RegressionSolver::Cholesky => {
-        //     let xct = x.t();
-        //     cholesky(xct.dot(&x), xct, &y)?
-        // }
-        RegressionSolver::Sgd => {
-            // self.set_internal(x, y);
-            let (n_targets, n_features, rng) = (
-                internal.n_targets,
-                internal.n_features,
-                internal.rng.as_mut().unwrap(),
-            );
-            // Rescale step_size to scale gradients correctly
-            // [Specific to this algorithm]
-            internal
-                .step_size
-                .as_mut()
-                .map(|s| *s = *s / T::from(n_targets).unwrap());
-            let coef = rand_init(&[n_features, n_targets], rng);
-            Ok(stochastic_gradient_descent(
-                x,
-                y,
-                coef,
-                linear_regression_gradient,
-                &*internal,
-            ))
-        }
-        RegressionSolver::Bgd => {
-            // self.set_internal(x, y);
-            let (n_targets, n_features, rng) = (
-                internal.n_targets,
-                internal.n_features,
-                internal.rng.as_mut().unwrap(),
-            );
-            let coef = rand_init(&[n_features, n_targets], rng);
-            Ok(batch_gradient_descent(
-                x,
-                y,
-                coef,
-                linear_regression_gradient,
-                &*internal,
-            ))
-        }
+    fn scale_step_size(&mut self)
+    where
+        C::Elem: Float + FromPrimitive,
+    {
+        let n_targets = C::Elem::from_usize(self.internal.n_targets).unwrap();
+        self.internal
+            .step_size
+            .as_mut()
+            .map(|s| *s = *s / n_targets);
+    }
+    fn scale_l1_penalty(&mut self)
+    where
+        C::Elem: Float + FromPrimitive,
+    {
+        let n_targets = C::Elem::from_usize(self.internal.n_targets).unwrap();
+        let n_samples = C::Elem::from_usize(self.internal.n_samples).unwrap();
+        self.internal
+            .l1_penalty
+            .as_mut()
+            .map(|p| *p = *p * n_targets / n_samples);
+    }
+    fn scale_l2_penalty(&mut self)
+    where
+        C::Elem: Float + FromPrimitive,
+    {
+        let n_targets = C::Elem::from_usize(self.internal.n_targets).unwrap();
+        let n_samples = C::Elem::from_usize(self.internal.n_samples).unwrap();
+        self.internal
+            .l2_penalty
+            .as_mut()
+            .map(|p| *p = *p * n_targets / n_samples);
     }
 }
+
+macro_rules! impl_settings_to_internal {
+    ($setter_name:ident, $field_name:ident, $default:ident) => {
+        impl<C: Container, I> Regression<C, I>
+        where
+            C::Elem: Copy + FromPrimitive,
+        {
+            fn $setter_name(&mut self) {
+                self.internal.$field_name = Some(
+                    self.settings
+                        .$field_name
+                        .unwrap_or(C::Elem::from_f32($default).unwrap()),
+                );
+            }
+        }
+    };
+}
+const DEFAULT_L1: f32 = 1.;
+const DEFAULT_L2: f32 = 1.;
+const DEFAULT_TOL: f32 = 1e-3;
+const DEFAULT_STEP_SIZE: f32 = 1e-3;
+impl_settings_to_internal!(set_l1_penalty_to_internal, l1_penalty, DEFAULT_L1);
+impl_settings_to_internal!(set_l2_penalty_to_internal, l2_penalty, DEFAULT_L2);
+impl_settings_to_internal!(set_tol_to_internal, tol, DEFAULT_TOL);
+impl_settings_to_internal!(set_step_size_to_internal, tol, DEFAULT_STEP_SIZE);
+
+macro_rules! impl_regression {
+    ($ix:ty, $ix_smaller:ty, $randn:ident) => {
+        impl<T: Clone> Regression<Array<T, $ix>, Array<T, $ix_smaller>> {
+            fn solve(
+                &mut self,
+                x: &Array2<T>,
+                y: &Array<T, $ix>,
+            ) -> Result<Array<T, $ix>, LinalgError>
+            where
+                T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform,
+            {
+                match self.settings.solver {
+                    RegressionSolver::Svd => Ok(x.least_squares(y)?.solution),
+                    // RegressionSolver::Exact => {
+                    //     let xct = x.t();
+                    //     exact(xct.dot(&x), xct, &y)?
+                    // }
+                    // RegressionSolver::Qr => {
+                    //     let xct = x.t();
+                    //     qr(xct.dot(&x), xct, &y)?
+                    // }
+                    // RegressionSolver::Cholesky => {
+                    //     let xct = x.t();
+                    //     cholesky(xct.dot(&x), xct, &y)?
+                    // }
+                    RegressionSolver::Sgd => {
+                        // self.set_internal(x, y);
+                        let (n_targets, n_features, rng) = (
+                            self.internal.n_targets,
+                            self.internal.n_features,
+                            self.internal.rng.as_mut().unwrap(),
+                        );
+                        // Rescale step_size to scale gradients correctly
+                        // [Specific to this algorithm]
+                        self.internal
+                            .step_size
+                            .as_mut()
+                            .map(|s| *s = *s / T::from(n_targets).unwrap());
+                        let coef = $randn(&[n_features, n_targets], rng);
+                        Ok(stochastic_gradient_descent(
+                            x,
+                            y,
+                            coef,
+                            linear_regression_gradient, // TODO change
+                            &self.internal,
+                        ))
+                    }
+                    RegressionSolver::Bgd => {
+                        // self.set_internal(x, y);
+                        let (n_targets, n_features, rng) = (
+                            self.internal.n_targets,
+                            self.internal.n_features,
+                            self.internal.rng.as_mut().unwrap(),
+                        );
+                        let coef = $randn(&[n_features, n_targets], rng);
+                        Ok(batch_gradient_descent(
+                            x,
+                            y,
+                            coef,
+                            linear_regression_gradient, // TODO change
+                            &self.internal,
+                        ))
+                    }
+                }
+            }
+        }
+        impl<T: Clone> RegressionModel for Regression<Array<T, $ix>, Array<T, $ix_smaller>>
+        where
+            T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform,
+        {
+            type FitResult = Result<(), LinalgError>;
+            type X = Array2<T>;
+            type Y = Array<T, $ix>;
+            type PredictResult = Result<Array<T, $ix>, ()>;
+            fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
+                if self.settings.fit_intercept {
+                    let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
+                    let coef = self.solve(&x_centered, &y_centered)?;
+                    self.parameter.intercept = Some(y_mean - x_mean.dot(&coef));
+                    self.parameter.coef = Some(coef);
+                } else {
+                    self.parameter.coef = Some(self.solve(x, y)?);
+                }
+                Ok(())
+            }
+            fn predict(&self, x: &Self::X) -> Self::PredictResult {
+                if self.settings.fit_intercept {
+                    if let Some(ref coef) = &self.parameter.coef {
+                        if let Some(ref intercept) = &self.parameter.intercept {
+                            return Ok(intercept + x.dot(coef));
+                        }
+                    }
+                } else {
+                    if let Some(ref coef) = &self.parameter.coef {
+                        return Ok(x.dot(coef));
+                    }
+                }
+                Err(())
+            }
+        }
+    };
+}
+impl_regression!(Ix1, Ix0, randn_1d);
+impl_regression!(Ix2, Ix1, randn_2d);
+// fn solve<T, R>(
+//     x: &Array2<T>,
+//     y: &Array<T, D>,
+//     settings: RegressionSettings<T>,
+//     internal: &mut RegressionInternal<T>,
+//     rand_init: R,
+// ) -> Result<Array<T, D>, LinalgError>
+// where
+//     T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform,
+//     R: Fn(&[usize], &mut ChaCha20Rng) -> Array<T, D>,
+//     D: Dimension,
+//     Array2<T>: LeastSquaresSvd<OwnedRepr<T>, T, D> + Dot<Array<T, D>, Output
+// = Array<T, D>>,     for<'a> ArrayView2<'a, T>: Dot<Array<T, D>, Output =
+// Array<T, D>>,     Array<T, D>: Algebra<Elem = T, SelectionOutput = Array<T,
+// D>>, {
+//     match settings.solver {
+//         RegressionSolver::Svd => Ok(x.least_squares(y)?.solution),
+//         // RegressionSolver::Exact => {
+//         //     let xct = x.t();
+//         //     exact(xct.dot(&x), xct, &y)?
+//         // }
+//         // RegressionSolver::Qr => {
+//         //     let xct = x.t();
+//         //     qr(xct.dot(&x), xct, &y)?
+//         // }
+//         // RegressionSolver::Cholesky => {
+//         //     let xct = x.t();
+//         //     cholesky(xct.dot(&x), xct, &y)?
+//         // }
+//         RegressionSolver::Sgd => {
+//             // self.set_internal(x, y);
+//             let (n_targets, n_features, rng) = (
+//                 internal.n_targets,
+//                 internal.n_features,
+//                 internal.rng.as_mut().unwrap(),
+//             );
+//             // Rescale step_size to scale gradients correctly
+//             // [Specific to this algorithm]
+//             internal
+//                 .step_size
+//                 .as_mut()
+//                 .map(|s| *s = *s / T::from(n_targets).unwrap());
+//             let coef = rand_init(&[n_features, n_targets], rng);
+//             Ok(stochastic_gradient_descent(
+//                 x,
+//                 y,
+//                 coef,
+//                 linear_regression_gradient,
+//                 &*internal,
+//             ))
+//         }
+//         RegressionSolver::Bgd => {
+//             // self.set_internal(x, y);
+//             let (n_targets, n_features, rng) = (
+//                 internal.n_targets,
+//                 internal.n_features,
+//                 internal.rng.as_mut().unwrap(),
+//             );
+//             let coef = rand_init(&[n_features, n_targets], rng);
+//             Ok(batch_gradient_descent(
+//                 x,
+//                 y,
+//                 coef,
+//                 linear_regression_gradient,
+//                 &*internal,
+//             ))
+//         }
+//     }
+// }
 
 fn linear_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
