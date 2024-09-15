@@ -7,7 +7,9 @@ extern crate test;
 
 use ndarray::{Array1, Array2};
 use ndarray_rand::{rand::SeedableRng, rand_distr::StandardNormal, RandomExt};
-use njang::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver, RegressionModel};
+use njang::{
+    LinearLinearRegressionSettings, LinearLinearRegressionSolver, LinearRegression, RegressionModel,
+};
 use rand_chacha::ChaCha20Rng;
 use test::Bencher;
 
@@ -26,7 +28,8 @@ fn fit_lin_reg_exact_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::EXACT,
+        solver: LinearRegressionSolver::Exact,
+        ..Default::default()
     });
     bench.iter(|| {
         let _solution = lin_reg.fit(&x, &y);
@@ -36,9 +39,10 @@ fn fit_lin_reg_exact_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_lin_reg_svd_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearLinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::SVD,
+        solver: LinearRegressionSolver::Svd,
+        ..Default::default()
     });
     bench.iter(|| {
         let _solution = lin_reg.fit(&x, &y);
@@ -48,9 +52,10 @@ fn fit_lin_reg_svd_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_lin_reg_qr_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearLinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::QR,
+        solver: LinearRegressionSolver::Qr,
+        ..Default::default()
     });
     bench.iter(|| {
         let _solution = lin_reg.fit(&x, &y);
@@ -62,7 +67,8 @@ fn fit_lin_reg_chol_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::CHOLESKY,
+        solver: LinearRegressionSolver::Cholesky,
+        ..Default::default()
     });
     bench.iter(|| {
         let _solution = lin_reg.fit(&x, &y);

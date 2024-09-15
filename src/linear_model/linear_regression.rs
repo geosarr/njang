@@ -27,7 +27,7 @@ const DEFAULT_STATE: u32 = 0;
 const DEFAULT_MAX_ITER: usize = 1000;
 
 #[derive(Debug, Default, Clone, Copy)]
-pub enum RegressionSolver {
+pub enum LinearRegressionSolver {
     /// Uses Singular Value Decomposition
     ///
     /// **This solver is available only for Linear regression and Ridge
@@ -72,7 +72,7 @@ pub enum RegressionSolver {
 
 /// This is responsible for processing settings, setting default values
 #[derive(Debug, Clone)]
-pub(crate) struct RegressionInternal<T> {
+pub(crate) struct LinearRegressionInternal<T> {
     pub n_samples: usize,
     pub n_features: usize,
     pub n_targets: usize,
@@ -84,7 +84,7 @@ pub(crate) struct RegressionInternal<T> {
     pub max_iter: Option<usize>,
 }
 
-impl<T> RegressionInternal<T> {
+impl<T> LinearRegressionInternal<T> {
     pub fn new() -> Self {
         Self {
             n_samples: 0,
@@ -113,7 +113,7 @@ impl<T> RegressionInternal<T> {
 /// - otherwise (i.e `l1_penalty = Some(value)` and `l2_penalty = Some(value)`),
 ///   then the fitted model is **Elastic Net regression**.
 #[derive(Debug, Clone, Copy)]
-pub struct RegressionSettings<T> {
+pub struct LinearRegressionSettings<T> {
     /// If it is `true` then the model fits with an intercept, `false` without
     /// an intercept. The matrix [coef][`Regression`] of non-intercept weights
     /// satisfies:
@@ -126,8 +126,8 @@ pub struct RegressionSettings<T> {
     /// mean) and `Y_mean` designating the average(s) of target(s) `Y`, `dot`
     /// is the matrix multiplication.
     pub fit_intercept: bool,
-    /// Optimization method, see [`RegressionSolver`].
-    pub solver: RegressionSolver,
+    /// Optimization method, see [`LinearRegressionSolver`].
+    pub solver: LinearRegressionSolver,
     /// If it is `None`, then no L1-penalty is added to the loss objective
     /// function. Otherwise, if it is equal to `Some(value)`, then `value *
     /// ||coef||`<sub>1</sub> is added to the loss objective function. Instead
@@ -142,16 +142,16 @@ pub struct RegressionSettings<T> {
     /// and numerical issues.
     pub l2_penalty: Option<T>, // for Ridge Regression
     /// Tolerance parameter.
-    /// - Gradient descent solvers (like [Sgd][`RegressionSolver::Sgd`],
-    ///   [Bgd][`RegressionSolver::Bgd`], etc) stop when the relative variation
-    ///   of consecutive iterates is lower than **tol**, that is:
+    /// - Gradient descent solvers (like [Sgd][`LinearRegressionSolver::Sgd`],
+    ///   [Bgd][`LinearRegressionSolver::Bgd`], etc) stop when the relative
+    ///   variation of consecutive iterates is lower than **tol**, that is:
     ///     - `||coef_next - coef_curr||`<sub>2</sub> `<= tol *
     ///       ||coef_curr||`<sub>2</sub>
     /// - No impact on the other algorithms:
-    ///     - [Exact][`RegressionSolver::Exact`]
-    ///     - [Svd][`RegressionSolver::Svd`]
-    ///     - [Qr][`RegressionSolver::Qr`]
-    ///     - [Cholesky][`RegressionSolver::Cholesky`]
+    ///     - [Exact][`LinearRegressionSolver::Exact`]
+    ///     - [Svd][`LinearRegressionSolver::Svd`]
+    ///     - [Qr][`LinearRegressionSolver::Qr`]
+    ///     - [Cholesky][`LinearRegressionSolver::Cholesky`]
     pub tol: Option<T>,
     /// Step size used in gradient descent algorithms.
     pub step_size: Option<T>,
@@ -161,20 +161,20 @@ pub struct RegressionSettings<T> {
     pub max_iter: Option<usize>,
 }
 
-impl<T> Default for RegressionSettings<T> {
+impl<T> Default for LinearRegressionSettings<T> {
     /// Defaults to linear regression without penalty
     /// ```
     /// use ndarray::{Array0, Array1, Array2};
-    /// use njang::{Regression, RegressionSettings};
+    /// use njang::{LinearRegressionSettings, Regression};
     ///
-    /// let settings = RegressionSettings::default();
+    /// let settings = LinearRegressionSettings::default();
     /// let model = Regression::<Array1<f32>, Array0<f32>>::new(settings);
     /// assert!(model.is_linear());
     /// ```
     fn default() -> Self {
         Self {
             fit_intercept: true,
-            solver: RegressionSolver::default(),
+            solver: LinearRegressionSolver::default(),
             l1_penalty: None,
             l2_penalty: None,
             tol: None,
@@ -186,7 +186,7 @@ impl<T> Default for RegressionSettings<T> {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct RegressionParameter<C, I> {
+pub struct LinearRegressionParameter<C, I> {
     /// Non-intercept weight(s).
     pub coef: Option<C>,
     /// Intercept weight(s) of the model.
@@ -205,23 +205,23 @@ pub struct RegressionParameter<C, I> {
 /// multiplication.
 ///
 /// **It is important to note** that the fitted model depends on how the user
-/// sets the fields `*_penalty` in [RegressionSettings]. See
-/// [RegressionSettings] for more details.
+/// sets the fields `*_penalty` in [LinearRegressionSettings]. See
+/// [LinearRegressionSettings] for more details.
 ///
 /// It is able to fit at once many regressions with the same input predictors
 /// `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate. **In this
 /// case, the same settings apply to all regressions involved**.
 /// ```
 /// use ndarray::{array, Array1, Array2};
-/// use njang::{Regression, RegressionModel, RegressionSettings, RegressionSolver};
+/// use njang::{LinearRegressionSettings, LinearRegressionSolver, Regression, RegressionModel};
 /// let x = array![[0., 1.], [1., -1.], [-2., 3.]];
 /// let coef = array![[10., 30.], [20., 40.]];
 /// let intercept = 1.;
 /// let y = x.dot(&coef) + intercept;
 /// // multiple regression models with intercept.
-/// let mut model = Regression::<Array2<f32>, Array1<f32>>::new(RegressionSettings {
+/// let mut model = Regression::<Array2<f32>, Array1<f32>>::new(LinearRegressionSettings {
 ///     fit_intercept: true,
-///     solver: RegressionSolver::Exact,
+///     solver: LinearRegressionSolver::Exact,
 ///     ..Default::default()
 /// });
 /// model.fit(&x, &y);
@@ -240,27 +240,27 @@ pub struct RegressionParameter<C, I> {
 /// );
 /// ```
 #[derive(Debug, Clone)]
-pub struct Regression<C, I>
+pub struct LinearRegression<C, I>
 where
     C: Container,
 {
-    pub parameter: RegressionParameter<C, I>,
-    pub settings: RegressionSettings<C::Elem>,
-    internal: RegressionInternal<C::Elem>,
+    pub parameter: LinearRegressionParameter<C, I>,
+    pub settings: LinearRegressionSettings<C::Elem>,
+    internal: LinearRegressionInternal<C::Elem>,
 }
 
-impl<C: Container, I> Regression<C, I> {
-    pub fn new(settings: RegressionSettings<C::Elem>) -> Self
+impl<C: Container, I> LinearRegression<C, I> {
+    pub fn new(settings: LinearRegressionSettings<C::Elem>) -> Self
     where
         C::Elem: Float,
     {
         Self {
-            parameter: RegressionParameter {
+            parameter: LinearRegressionParameter {
                 coef: None,
                 intercept: None,
             },
             settings,
-            internal: RegressionInternal::new(),
+            internal: LinearRegressionInternal::new(),
         }
     }
     /// Coefficients of the model
@@ -358,7 +358,9 @@ impl<C: Container, I> Regression<C, I> {
             self.scale_l2_penalty();
         }
     }
-    fn gradient_function<T, Y>(&self) -> impl Fn(&Array2<T>, &Y, &Y, &RegressionInternal<T>) -> Y
+    fn gradient_function<T, Y>(
+        &self,
+    ) -> impl Fn(&Array2<T>, &Y, &Y, &LinearRegressionInternal<T>) -> Y
     where
         T: Lapack,
         for<'a> Y: Sub<&'a Y, Output = Y>
@@ -384,7 +386,7 @@ impl<C: Container, I> Regression<C, I> {
 
 macro_rules! impl_settings_to_internal {
     ($setter_name:ident, $field_name:ident, $default:ident) => {
-        impl<C: Container, I> Regression<C, I>
+        impl<C: Container, I> LinearRegression<C, I>
         where
             C::Elem: Copy + FromPrimitive + core::fmt::Debug,
         {
@@ -406,7 +408,7 @@ impl_settings_to_internal!(set_step_size_to_internal, step_size, DEFAULT_STEP_SI
 
 macro_rules! impl_scale_penalty {
     ($scaler_name:ident, $field:ident) => {
-        impl<C: Container, I> Regression<C, I>
+        impl<C: Container, I> LinearRegression<C, I>
         where
             C::Elem: Float + FromPrimitive,
         {
@@ -429,7 +431,7 @@ impl_scale_penalty!(scale_l2_penalty, l2_penalty);
 
 macro_rules! impl_regression {
     ($ix:ty, $ix_smaller:ty, $randu:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {
-        impl<T: Clone> Regression<Array<T, $ix>, Array<T, $ix_smaller>> {
+        impl<T: Clone> LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>> {
             fn solve(
                 &mut self,
                 x: &Array2<T>,
@@ -440,7 +442,7 @@ macro_rules! impl_regression {
                 T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform + core::fmt::Debug,
             {
                 match self.settings.solver {
-                    RegressionSolver::Svd => {
+                    LinearRegressionSolver::Svd => {
                         if self.is_ridge() | self.is_linear() {
                             Ok(x.least_squares(y)?.solution)
                         } else {
@@ -448,7 +450,7 @@ macro_rules! impl_regression {
                             panic!("Not supported.");
                         }
                     }
-                    RegressionSolver::Exact => {
+                    LinearRegressionSolver::Exact => {
                         if self.is_ridge() | self.is_linear() {
                             let xct = x.t();
                             exact(xct.dot(x), xct, y)
@@ -457,7 +459,7 @@ macro_rules! impl_regression {
                             panic!("Not supported.");
                         }
                     }
-                    RegressionSolver::Qr => {
+                    LinearRegressionSolver::Qr => {
                         if self.is_ridge() | self.is_linear() {
                             let xct = x.t();
                             qr(xct.dot(x), xct, y)
@@ -466,7 +468,7 @@ macro_rules! impl_regression {
                             panic!("Not supported.");
                         }
                     }
-                    RegressionSolver::Cholesky => {
+                    LinearRegressionSolver::Cholesky => {
                         if self.is_ridge() | self.is_linear() {
                             let xct = x.t();
                             cholesky(xct.dot(x), xct, y)
@@ -475,7 +477,7 @@ macro_rules! impl_regression {
                             panic!("Not supported.");
                         }
                     }
-                    RegressionSolver::Sgd => {
+                    LinearRegressionSolver::Sgd => {
                         self.set_internal(x, y);
                         // Rescale step_size and penalty(ies) to scale gradients correctly
                         self.scale_step_size();
@@ -495,7 +497,7 @@ macro_rules! impl_regression {
                             &self.internal,
                         ))
                     }
-                    RegressionSolver::Bgd => {
+                    LinearRegressionSolver::Bgd => {
                         self.set_internal(x, y);
                         // println!("Internal after setting:\n{:?}", self.internal.clone());
                         let (n_targets, n_features, rng) = (
@@ -512,7 +514,7 @@ macro_rules! impl_regression {
                             &self.internal,
                         ))
                     }
-                    RegressionSolver::Sag => {
+                    LinearRegressionSolver::Sag => {
                         self.set_internal(x, y);
                         // Rescale step_size and penalty(ies) to scale gradients correctly
                         self.scale_step_size();
@@ -564,7 +566,7 @@ macro_rules! impl_regression {
                 }
             }
         }
-        impl<T: Clone> RegressionModel for Regression<Array<T, $ix>, Array<T, $ix_smaller>>
+        impl<T: Clone> RegressionModel for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
         where
             T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform,
         {
@@ -655,7 +657,7 @@ impl_regression!(Ix2, Ix1, randu_2d, identity, reshape_to_2d);
 
 #[test]
 fn code() {
-    use crate::linear_model::RegressionInternal;
+    use crate::linear_model::LinearRegressionInternal;
     use ndarray::array;
 
     let x = array![[0., 1.], [1., -1.], [-2., 3.]];
@@ -670,7 +672,7 @@ fn code() {
         y.shape()[1]
     };
 
-    let settings = RegressionInternal {
+    let settings = LinearRegressionInternal {
         n_samples: x.nrows(),
         n_features: x.ncols(),
         n_targets: n_targets,

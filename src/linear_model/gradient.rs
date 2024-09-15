@@ -3,13 +3,13 @@ use core::ops::{Add, Mul, Sub};
 use ndarray::{linalg::Dot, Array2, ArrayView2};
 use ndarray_linalg::Lapack;
 
-use super::RegressionInternal;
+use super::LinearRegressionInternal;
 
 pub(crate) fn linear_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
     y: &Y,
     coef: &Y,
-    settings: &RegressionInternal<T>,
+    settings: &LinearRegressionInternal<T>,
 ) -> Y
 where
     for<'a> Y: Sub<&'a Y, Output = Y> + Mul<T, Output = Y>,
@@ -24,7 +24,7 @@ pub(crate) fn ridge_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
     y: &Y,
     coef: &Y,
-    settings: &RegressionInternal<T>,
+    settings: &LinearRegressionInternal<T>,
 ) -> Y
 where
     for<'a> Y: Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y>,
@@ -41,7 +41,7 @@ pub(crate) fn lasso_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
     y: &Y,
     coef: &Y,
-    settings: &RegressionInternal<T>,
+    settings: &LinearRegressionInternal<T>,
 ) -> Y
 where
     for<'a> Y: Sub<&'a Y, Output = Y>
@@ -61,7 +61,7 @@ pub(crate) fn elastic_net_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
     y: &Y,
     coef: &Y,
-    settings: &RegressionInternal<T>,
+    settings: &LinearRegressionInternal<T>,
 ) -> Y
 where
     for<'a> Y: Sub<&'a Y, Output = Y>

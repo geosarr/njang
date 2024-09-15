@@ -1,19 +1,19 @@
 mod tests {
     use super::super::*;
-    use crate::{Regression, RegressionModel};
+    use crate::{LinearRegression, RegressionModel};
     extern crate alloc;
     use crate::traits::Algebra;
     use alloc::vec::Vec;
     use ndarray::{Array, Array1, Array2, Ix0, Ix1, Ix2};
 
-    const REGRESSION_SOLVERS: [RegressionSolver; 7] = [
-        RegressionSolver::Svd,
-        RegressionSolver::Sgd,
-        RegressionSolver::Bgd,
-        RegressionSolver::Sag,
-        RegressionSolver::Qr,
-        RegressionSolver::Exact,
-        RegressionSolver::Cholesky,
+    const REGRESSION_SOLVERS: [LinearRegressionSolver; 7] = [
+        LinearRegressionSolver::Svd,
+        LinearRegressionSolver::Sgd,
+        LinearRegressionSolver::Bgd,
+        LinearRegressionSolver::Sag,
+        LinearRegressionSolver::Qr,
+        LinearRegressionSolver::Exact,
+        LinearRegressionSolver::Cholesky,
     ];
 
     // from https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn.linear_model.LinearRegression
@@ -111,8 +111,8 @@ mod tests {
     impl_test!(
         assert_one_reg,
         one_reg,
-        Regression,
-        RegressionSettings,
+        LinearRegression,
+        LinearRegressionSettings,
         one_reg_dataset,
         REGRESSION_SOLVERS,
         Ix1,
@@ -121,8 +121,8 @@ mod tests {
     impl_test!(
         assert_multi_reg,
         multi_reg,
-        Regression,
-        RegressionSettings,
+        LinearRegression,
+        LinearRegressionSettings,
         multi_reg_dataset,
         REGRESSION_SOLVERS,
         Ix2,

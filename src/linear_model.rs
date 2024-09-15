@@ -83,7 +83,7 @@ macro_rules! impl_settings {
         }
     };
 }
-impl_settings!(RegressionInternal);
+impl_settings!(LinearRegressionInternal);
 
 pub(crate) fn exact<T, Y>(x: Array2<T>, z: ArrayView2<T>, y: &Y) -> Result<Y, LinalgError>
 where
