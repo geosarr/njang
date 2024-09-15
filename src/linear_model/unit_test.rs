@@ -15,13 +15,14 @@ mod tests {
         LinearRegressionSolver::CHOLESKY,
     ];
 
-    const REGRESSION_SOLVERS: [RegressionSolver; 4] = [
+    const REGRESSION_SOLVERS: [RegressionSolver; 7] = [
         RegressionSolver::Svd,
         RegressionSolver::Sgd,
         RegressionSolver::Bgd,
         RegressionSolver::Sag,
-        // RegressionSolver::EXACT,
-        // RegressionSolver::CHOLESKY,
+        RegressionSolver::Qr,
+        RegressionSolver::Exact,
+        RegressionSolver::Cholesky,
     ];
 
     const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 7] = [

@@ -17,6 +17,8 @@ use ndarray_rand::rand_distr::uniform::SampleUniform;
 use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
 
+use super::LinearModelInternal;
+
 const DEFAULT_L1: f32 = 1.;
 const DEFAULT_L2: f32 = 1.;
 const DEFAULT_TOL: f32 = 1e-3;
@@ -519,13 +521,13 @@ macro_rules! impl_regression {
                             self.internal.n_samples,
                             self.internal.rng.as_mut().unwrap(),
                         );
-                        let _y = $reshape_to_2d(y); //
+                        let y_2d = $reshape_to_2d(y); // TODO: Improvement needed to avoid copy or broadcasting
                         let coef = randn_2d(&[n_features, n_targets], rng);
-                        let grad = Array2::<_>::zeros((n_samples * n_targets, n_features));
-                        let (gradients, sum_gradients) = init_grad(x, &_y, grad, &coef, T::zero());
+                        let (gradients, sum_gradients) =
+                            init_grad(x, &y_2d, &coef, self.gradient_function(), &self.internal);
                         let coef = stochastic_average_gradient(
                             x,
-                            &_y,
+                            &y_2d,
                             coef,
                             self.gradient_function(),
                             &self.internal,
@@ -591,33 +593,31 @@ where
 pub fn reshape_to_1d<T: Clone>(y: Array2<T>) -> Array1<T> {
     y.column(0).to_owned()
 }
-pub(crate) fn init_grad<T>(
+pub(crate) fn init_grad<T, G, S>(
     x: &Array2<T>,
     y: &Array2<T>,
-    mut grad: Array2<T>,
     coef: &Array2<T>,
-    alpha: T,
+    scaled_grad: G,
+    settings: &S,
 ) -> (Array2<T>, Array2<T>)
 where
-    for<'a> T: Lapack + ScalarOperand, /*
-                                        * + Mul<Array1<T>, Output = Array1<T>>
-                                        * + Mul<&'a Array2<T>, Output = Array2<T>>
-                                        * + Mul<&'a Array1<T>, Output = Array1<T>>, */
+    for<'a> T: Lapack + ScalarOperand,
+    G: Fn(&Array2<T>, &Array2<T>, &Array2<T>, &S) -> Array2<T>,
+    S: LinearModelInternal<Scalar = T>,
 {
-    let (n_samples, n_regressions) = (x.nrows(), y.ncols());
+    let (n_samples, n_features, n_targets) = (x.nrows(), x.ncols(), y.ncols());
+    let mut grad = Array2::<_>::zeros((n_samples * n_targets, n_features));
+    let mut sum_grad = Array2::<T>::zeros((n_targets, n_features));
     for k in 0..n_samples {
-        let xi = x.row(k).to_owned();
-        let yi = y.row(k);
-        let error = xi.dot(coef) - yi;
-        let grad_norm = coef * alpha;
-        for r in 0..n_regressions {
+        let xi = x.selection(0, &[k]).to_owned();
+        let yi = y.selection(0, &[k]).to_owned();
+        let gradient = scaled_grad(&xi, &yi, &coef, settings);
+        for r in 0..n_targets {
             let start = r * n_samples;
-            (grad_norm.column(r).to_owned() + &xi * error[r])
-                .assign_to(grad.slice_mut(s!(start + k, ..)));
+            (gradient.column(r).to_owned()).assign_to(grad.slice_mut(s!(start + k, ..)));
         }
     }
-    let mut sum_grad = Array2::<T>::zeros((n_regressions, x.ncols()));
-    for r in 0..n_regressions {
+    for r in 0..n_targets {
         grad.slice(s!(r * n_samples..(r + 1) * n_samples, ..))
             .sum_axis(Axis(0))
             .assign_to(sum_grad.slice_mut(s!(r, ..)));
