@@ -1,6 +1,5 @@
-use core::ops::{Add, Mul, Sub};
+use core::ops::Add;
 
-use linalg::Dot;
 use ndarray::*;
 use ndarray_linalg::Lapack;
 use ndarray_rand::rand_distr::{Distribution, Uniform};
@@ -10,6 +9,8 @@ use crate::{
     traits::{Algebra, Container},
 };
 
+/// Callers have to make sure that the settings needed are provided in the
+/// object `settings` before using this function.
 pub(crate) fn batch_gradient_descent<T, Y, G, S>(
     x: &Array2<T>,
     y: &Y,
@@ -24,7 +25,7 @@ where
     G: Fn(&Array2<T>, &Y, &Y, &S) -> Y,
     S: LinearModelInternal<Scalar = T>,
 {
-    // Users have to make sure that these settings are provided in the object
+    // Callers have to make sure that these settings are provided in the object
     // `settings` before using this function
     let (max_iter, tol) = (settings.max_iter().unwrap(), settings.tol().unwrap());
     for _ in 0..max_iter {
@@ -38,6 +39,8 @@ where
     coef
 }
 
+/// Callers have to make sure that the settings needed are provided in the
+/// object `settings` before using this function.
 pub(crate) fn stochastic_gradient_descent<T, Y, G, S>(
     x: &Array2<T>,
     y: &Y,
@@ -53,8 +56,6 @@ where
     G: Fn(&Array2<T>, &Y, &Y, &S) -> Y,
     S: LinearModelInternal<Scalar = T>,
 {
-    // Users have to make sure that these settings are provided in the object
-    // `settings` before using this function
     let (max_iter, tol, mut rng, n_targets) = (
         settings.max_iter().unwrap(),
         settings.tol().unwrap(),
@@ -82,6 +83,15 @@ where
     coef
 }
 
+/// Callers have to make sure that the settings needed are provided in the
+/// object `settings` before using this function.
+///
+/// `sum_gradients` and `gradients` arguments should be multiplied before the
+/// first iteration by minus step size. The caller shoud use the same
+/// `scaled_grad` function to sonstruct these arguments in order to take into
+/// account the step size. The shape of `gradients` should be [n_features;
+/// n_samples * n_targets] and the shape of `sum_gradients` should be
+/// [n_features; n_targets] before the first iteration of this function.
 pub(crate) fn stochastic_average_gradient<T, G, S>(
     x: &Array2<T>,
     y: &Array2<T>,
@@ -97,15 +107,12 @@ where
     G: Fn(&Array2<T>, &Array2<T>, &Array2<T>, &S) -> Array2<T>,
     S: LinearModelInternal<Scalar = T>,
 {
-    // Users have to make sure that these settings are provided in the object
-    // `settings` before using this function
-    let (max_iter, tol, mut rng, n_targets, n_samples, step_size) = (
+    let (max_iter, tol, mut rng, n_targets, n_samples) = (
         settings.max_iter().unwrap(),
         settings.tol().unwrap(),
         settings.rng().unwrap(),
         settings.n_targets().unwrap(),
         settings.n_samples().unwrap(),
-        settings.step_size().unwrap(),
     );
     let unif = Uniform::<usize>::new(0, x.nrows());
     // When sampling among matrix x rows, the same sample is duplicated as many
@@ -118,23 +125,13 @@ where
     // gradients.
     let mut grad_indices = (0..n_targets).collect::<Vec<usize>>();
     let scale = T::one() / T::from_usize(n_samples).unwrap();
-    // `sum_gradients` and `gradients` should be multiplied before the first
-    // iteration by minus step size, because `scaled_grad`.
-    // The shape of `gradients` should be [n_features; n_samples * n_targets] and
-    // the shape of `sum_gradients` should be [n_features; n_targets] before the
-    // first iteration. May be it is preferable to transpose them when creating them
-    sum_gradients = (sum_gradients * (-step_size)).t().to_owned();
-    gradients = (gradients * (-step_size)).t().to_owned();
-    for _i in 0..max_iter {
-        // println!("\n{:?}", _i);
+    for _ in 0..max_iter {
         let index = unif.sample(&mut rng);
         indices.fill(index);
         let xi = x.selection(0, &indices);
         let yi = y.selection(0, &indices);
         // minus step size should be multiplied to `scaled_grad` function output.
         let gradi = scaled_grad(&xi, &yi, &coef, settings);
-        // println!("gradi:\n{:?}", gradi);
-        // println!("coefi:\n{:?}", coef);
         // Put inside `grad_indices` the values: `index`; `n_samples + index`; ...;
         // `(n_targets-1)*n_samples + index`, in order to take the `index`-th gradient
         // for each target model.
@@ -143,9 +140,7 @@ where
             .enumerate()
             .map(|(pos, gi)| *gi = pos * n_samples + index)
             .for_each(drop);
-        // println!("grad_indices:\n{:?}", grad_indices);
         let previous_grad = gradients.selection(1, &grad_indices);
-        // println!("previous_grad:\n{:?}", previous_grad);
         let sum = &sum_gradients + (&gradi - previous_grad);
         let update = &sum * scale; // Average gradient
         if update.l2_norm() < tol * coef.l2_norm() {

@@ -523,13 +523,14 @@ macro_rules! impl_regression {
                         );
                         let y_2d = $reshape_to_2d(y); // TODO: Improvement needed to avoid copy or broadcasting
                         let coef = randn_2d(&[n_features, n_targets], rng);
+                        let gradient_function = self.gradient_function();
                         let (gradients, sum_gradients) =
-                            init_grad(x, &y_2d, &coef, self.gradient_function(), &self.internal);
+                            init_grad(x, &y_2d, &coef, &gradient_function, &self.internal);
                         let coef = stochastic_average_gradient(
                             x,
                             &y_2d,
                             coef,
-                            self.gradient_function(),
+                            gradient_function,
                             &self.internal,
                             gradients,
                             sum_gradients,
@@ -606,21 +607,21 @@ where
     S: LinearModelInternal<Scalar = T>,
 {
     let (n_samples, n_features, n_targets) = (x.nrows(), x.ncols(), y.ncols());
-    let mut grad = Array2::<_>::zeros((n_samples * n_targets, n_features));
-    let mut sum_grad = Array2::<T>::zeros((n_targets, n_features));
+    let mut grad = Array2::<_>::zeros((n_features, n_samples * n_targets));
+    let mut sum_grad = Array2::<T>::zeros((n_features, n_targets));
     for k in 0..n_samples {
         let xi = x.selection(0, &[k]).to_owned();
         let yi = y.selection(0, &[k]).to_owned();
         let gradient = scaled_grad(&xi, &yi, &coef, settings);
-        for r in 0..n_targets {
-            let start = r * n_samples;
-            (gradient.column(r).to_owned()).assign_to(grad.slice_mut(s!(start + k, ..)));
+        for t in 0..n_targets {
+            let start = t * n_samples;
+            (gradient.column(t).to_owned()).assign_to(grad.slice_mut(s!(.., start + k)));
         }
     }
-    for r in 0..n_targets {
-        grad.slice(s!(r * n_samples..(r + 1) * n_samples, ..))
-            .sum_axis(Axis(0))
-            .assign_to(sum_grad.slice_mut(s!(r, ..)));
+    for t in 0..n_targets {
+        grad.slice(s!(.., t * n_samples..(t + 1) * n_samples))
+            .sum_axis(Axis(1))
+            .assign_to(sum_grad.slice_mut(s!(.., t)));
     }
     return (grad, sum_grad);
 }
@@ -697,7 +698,7 @@ where
 #[test]
 fn code() {
     use crate::linear_model::RegressionInternal;
-    use ndarray::{array, Array1};
+    use ndarray::array;
 
     let x = array![[0., 1.], [1., -1.], [-2., 3.]];
     println!("x:\n{:?}\n", x);
