@@ -1,10 +1,10 @@
-mod gradients;
+mod gradient;
 mod linear_regression;
 mod unit_test;
 extern crate alloc;
 use crate::traits::Algebra;
 use core::ops::Sub;
-use gradients::*;
+use gradient::*;
 pub use linear_regression::*;
 use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};

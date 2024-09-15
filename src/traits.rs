@@ -50,7 +50,6 @@ pub trait Algebra: Container {
     type MeanAxisOutput;
     fn powi(&self, n: i32) -> Self;
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
-    fn mean(&self) -> Self::Elem;
     fn l2_norm(&self) -> Self::Elem;
     fn sign(&self) -> Self;
 }
@@ -59,9 +58,6 @@ impl<T: Float + FromPrimitive> Algebra for Array1<T> {
     type MeanAxisOutput = Array0<T>;
     fn powi(&self, n: i32) -> Self {
         self.map(|v| v.powi(n))
-    }
-    fn mean(&self) -> Self::Elem {
-        Self::mean(self).unwrap()
     }
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput {
         Self::mean_axis(self, Axis(axis)).unwrap()
@@ -84,9 +80,6 @@ impl<T: Float + FromPrimitive> Algebra for Array2<T> {
     type MeanAxisOutput = Array1<T>;
     fn powi(&self, n: i32) -> Self {
         self.map(|v| v.powi(n))
-    }
-    fn mean(&self) -> Self::Elem {
-        Self::mean(self).unwrap()
     }
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput {
         Self::mean_axis(self, Axis(axis)).unwrap()
