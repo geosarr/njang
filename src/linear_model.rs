@@ -1,4 +1,5 @@
 mod gradient;
+mod linear_classification;
 mod linear_regression;
 mod unit_test;
 extern crate alloc;

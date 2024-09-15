@@ -1,5 +1,6 @@
 use ndarray::*;
 use num_traits::{Float, FromPrimitive, Zero};
+
 /// Implements classic steps of a regression model.
 pub trait RegressionModel {
     type X;
@@ -12,17 +13,22 @@ pub trait RegressionModel {
     fn predict(&self, x: &Self::X) -> Self::PredictResult;
 }
 
-// pub trait ClassificationModel {
-//     type X;
-//     type Y;
-//     type FitResult;
-//     type PredictResult;
-//     type PredictProbaResult;
-//     fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult;
-//     fn predict(&self, x: &Self::X) -> Self::PredictResult;
-//     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult;
-// }
+/// Implements classic steps of a classification model.
+pub trait ClassificationModel {
+    type X;
+    type Y;
+    type FitResult;
+    type PredictResult;
+    type PredictProbaResult;
+    /// Trains the model.
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult;
+    /// Predicts instances if possible.
+    fn predict(&self, x: &Self::X) -> Self::PredictResult;
+    /// Estimates the probability(ies) of instances if possible.
+    fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult;
+}
 
+/// Base trait handling the modelling data structures.
 pub trait Container {
     type Elem;
     type SelectionOutput;
@@ -46,6 +52,7 @@ where
     }
 }
 
+/// Trait implementing operations on modelling data structures.
 pub trait Algebra: Container {
     type MeanAxisOutput;
     type PowiOutput;
