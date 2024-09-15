@@ -1,7 +1,7 @@
 use crate::{
     linear_model::{
         cholesky, elastic_net_regression_gradient, exact, lasso_regression_gradient,
-        linear_regression_gradient, preprocess, qr, randn_1d, randn_2d, ridge_regression_gradient,
+        linear_regression_gradient, preprocess, qr, randu_1d, randu_2d, ridge_regression_gradient,
     },
     solver::{batch_gradient_descent, stochastic_average_gradient, stochastic_gradient_descent},
     traits::{Algebra, Container, RegressionModel},
@@ -361,8 +361,10 @@ impl<C: Container, I> Regression<C, I> {
     fn gradient_function<T, Y>(&self) -> impl Fn(&Array2<T>, &Y, &Y, &RegressionInternal<T>) -> Y
     where
         T: Lapack,
-        for<'a> Y:
-            Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y> + Algebra<Elem = T>,
+        for<'a> Y: Sub<&'a Y, Output = Y>
+            + Add<Y, Output = Y>
+            + Mul<T, Output = Y>
+            + Algebra<Elem = T, SignOutput = Y>,
         for<'a> &'a Y: Mul<T, Output = Y>,
         Array2<T>: Dot<Y, Output = Y>,
         for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
@@ -426,12 +428,13 @@ impl_scale_penalty!(scale_l1_penalty, l1_penalty);
 impl_scale_penalty!(scale_l2_penalty, l2_penalty);
 
 macro_rules! impl_regression {
-    ($ix:ty, $ix_smaller:ty, $randn:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {
+    ($ix:ty, $ix_smaller:ty, $randu:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {
         impl<T: Clone> Regression<Array<T, $ix>, Array<T, $ix_smaller>> {
             fn solve(
                 &mut self,
                 x: &Array2<T>,
                 y: &Array<T, $ix>,
+                fit_intercept: bool,
             ) -> Result<Array<T, $ix>, LinalgError>
             where
                 T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform + core::fmt::Debug,
@@ -483,7 +486,7 @@ macro_rules! impl_regression {
                             self.internal.n_features,
                             self.internal.rng.as_mut().unwrap(),
                         );
-                        let coef = $randn(&[n_features, n_targets], rng);
+                        let coef = $randu(&[n_features, n_targets], rng);
                         Ok(stochastic_gradient_descent(
                             x,
                             y,
@@ -500,7 +503,7 @@ macro_rules! impl_regression {
                             self.internal.n_features,
                             self.internal.rng.as_mut().unwrap(),
                         );
-                        let coef = $randn(&[n_features, n_targets], rng);
+                        let coef = $randu(&[n_features, n_targets], rng);
                         Ok(batch_gradient_descent(
                             x,
                             y,
@@ -515,14 +518,35 @@ macro_rules! impl_regression {
                         self.scale_step_size();
                         self.scale_penalty();
                         println!("Internal after setting:\n{:?}", self.internal.clone());
-                        let (n_targets, n_features, n_samples, rng) = (
-                            self.internal.n_targets,
+                        let n_targets = self.internal.n_targets;
+                        if self.is_ridge() | self.is_elastic_net() {
+                            // Schmidt, M., Roux, N. L., & Bach, F. (2013)
+                            // Reset the step size.
+                            let mut max_squared_sum = T::zero();
+                            x.axis_iter(Axis(0))
+                                .map(|r| {
+                                    let norm = r.l2_norm();
+                                    if max_squared_sum < norm {
+                                        max_squared_sum = norm;
+                                    }
+                                })
+                                .for_each(drop);
+                            max_squared_sum = Float::powi(max_squared_sum, 2);
+                            let fi = T::from(usize::from(fit_intercept)).unwrap();
+                            let alpha_norm =
+                                self.internal.l2_penalty.unwrap() / T::from(n_targets).unwrap();
+                            self.internal
+                                .step_size
+                                .as_mut()
+                                .map(|p| *p = T::one() / (max_squared_sum + fi + alpha_norm));
+                        }
+                        // self.internal
+                        let y_2d = $reshape_to_2d(y); // TODO: Improvement needed to avoid copy or broadcasting
+                        let (n_features, rng) = (
                             self.internal.n_features,
-                            self.internal.n_samples,
                             self.internal.rng.as_mut().unwrap(),
                         );
-                        let y_2d = $reshape_to_2d(y); // TODO: Improvement needed to avoid copy or broadcasting
-                        let coef = randn_2d(&[n_features, n_targets], rng);
+                        let coef = randu_2d(&[n_features, n_targets], rng);
                         let gradient_function = self.gradient_function();
                         let (gradients, sum_gradients) =
                             init_grad(x, &y_2d, &coef, &gradient_function, &self.internal);
@@ -549,13 +573,14 @@ macro_rules! impl_regression {
             type Y = Array<T, $ix>;
             type PredictResult = Result<Array<T, $ix>, ()>;
             fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
-                if self.settings.fit_intercept {
+                let fit_intercept = self.settings.fit_intercept;
+                if fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
-                    let coef = self.solve(&x_centered, &y_centered)?;
+                    let coef = self.solve(&x_centered, &y_centered, fit_intercept)?;
                     self.parameter.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.parameter.coef = Some(coef);
                 } else {
-                    self.parameter.coef = Some(self.solve(x, y)?);
+                    self.parameter.coef = Some(self.solve(x, y, fit_intercept)?);
                 }
                 Ok(())
             }
@@ -625,8 +650,8 @@ where
     }
     return (grad, sum_grad);
 }
-impl_regression!(Ix1, Ix0, randn_1d, reshape_to_1d, reshape_to_2d);
-impl_regression!(Ix2, Ix1, randn_2d, identity, reshape_to_2d);
+impl_regression!(Ix1, Ix0, randu_1d, reshape_to_1d, reshape_to_2d);
+impl_regression!(Ix2, Ix1, randu_2d, identity, reshape_to_2d);
 
 #[test]
 fn code() {

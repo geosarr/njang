@@ -44,7 +44,10 @@ pub(crate) fn lasso_regression_gradient<T: Lapack, Y>(
     settings: &RegressionInternal<T>,
 ) -> Y
 where
-    for<'a> Y: Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y> + Algebra<Elem = T>,
+    for<'a> Y: Sub<&'a Y, Output = Y>
+        + Add<Y, Output = Y>
+        + Mul<T, Output = Y>
+        + Algebra<Elem = T, SignOutput = Y>,
     for<'a> &'a Y: Mul<T, Output = Y>,
     Array2<T>: Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
@@ -61,7 +64,10 @@ pub(crate) fn elastic_net_regression_gradient<T: Lapack, Y>(
     settings: &RegressionInternal<T>,
 ) -> Y
 where
-    for<'a> Y: Sub<&'a Y, Output = Y> + Add<Y, Output = Y> + Mul<T, Output = Y> + Algebra<Elem = T>,
+    for<'a> Y: Sub<&'a Y, Output = Y>
+        + Add<Y, Output = Y>
+        + Mul<T, Output = Y>
+        + Algebra<Elem = T, SignOutput = Y>,
     for<'a> &'a Y: Mul<T, Output = Y>,
     Array2<T>: Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,

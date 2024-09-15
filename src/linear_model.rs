@@ -122,7 +122,7 @@ where
     }
 }
 
-pub(crate) fn randn_1d<T: Float + SampleUniform, R: Rng>(
+pub(crate) fn randu_1d<T: Float + SampleUniform, R: Rng>(
     m: &[usize],
     rng: &mut R,
 ) -> Array<T, Ix1> {
@@ -131,7 +131,7 @@ pub(crate) fn randn_1d<T: Float + SampleUniform, R: Rng>(
     Array::<T, Ix1>::random_using(m[0], Uniform::new_inclusive(-high, high), rng)
 }
 
-pub(crate) fn randn_2d<T: Float + SampleUniform, R: Rng>(
+pub(crate) fn randu_2d<T: Float + SampleUniform, R: Rng>(
     m: &[usize],
     rng: &mut R,
 ) -> Array<T, Ix2> {

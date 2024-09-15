@@ -1,5 +1,5 @@
 use ndarray::*;
-use num_traits::{Float, FromPrimitive};
+use num_traits::{Float, FromPrimitive, Zero};
 /// Implements classic steps of a regression model.
 pub trait RegressionModel {
     type X;
@@ -48,49 +48,36 @@ where
 
 pub trait Algebra: Container {
     type MeanAxisOutput;
-    fn powi(&self, n: i32) -> Self;
+    type PowiOutput;
+    type SignOutput;
+    fn powi(&self, n: i32) -> Self::PowiOutput;
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
     fn l2_norm(&self) -> Self::Elem;
-    fn sign(&self) -> Self;
+    fn sign(&self) -> Self::SignOutput;
 }
 
-impl<T: Float + FromPrimitive> Algebra for Array1<T> {
-    type MeanAxisOutput = Array0<T>;
-    fn powi(&self, n: i32) -> Self {
+impl<S, D> Algebra for ArrayBase<S, D>
+where
+    S: Data,
+    S::Elem: Float + Zero + FromPrimitive,
+    D: Dimension + RemoveAxis,
+{
+    type MeanAxisOutput = Array<S::Elem, D::Smaller>;
+    type PowiOutput = Array<S::Elem, D>;
+    type SignOutput = Array<S::Elem, D>;
+    fn powi(&self, n: i32) -> Self::PowiOutput {
         self.map(|v| v.powi(n))
     }
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput {
         Self::mean_axis(self, Axis(axis)).unwrap()
     }
-    fn l2_norm(&self) -> Self::Elem {
+    fn l2_norm(&self) -> S::Elem {
         self.powi(2).sum().sqrt()
     }
-    fn sign(&self) -> Self {
+    fn sign(&self) -> Self::SignOutput {
         self.map(|v| {
-            if v.abs() > T::epsilon() {
-                T::zero()
-            } else {
-                v.signum()
-            }
-        })
-    }
-}
-
-impl<T: Float + FromPrimitive> Algebra for Array2<T> {
-    type MeanAxisOutput = Array1<T>;
-    fn powi(&self, n: i32) -> Self {
-        self.map(|v| v.powi(n))
-    }
-    fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput {
-        Self::mean_axis(self, Axis(axis)).unwrap()
-    }
-    fn l2_norm(&self) -> Self::Elem {
-        self.powi(2).sum().sqrt()
-    }
-    fn sign(&self) -> Self {
-        self.map(|v| {
-            if v.abs() > T::epsilon() {
-                T::zero()
+            if v.abs() > S::Elem::epsilon() {
+                S::Elem::zero()
             } else {
                 v.signum()
             }
