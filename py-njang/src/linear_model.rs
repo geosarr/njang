@@ -1,6 +1,6 @@
 use ndarray::{Array0, Array1, Array2};
 use njang::{
-    RegressionModel, RidgeRegression as RidgeReg, RidgeRegressionSettings, RidgeRegressionSolver,
+    LinearRegression as LinReg, LinearRegressionSettings, LinearRegressionSolver, RegressionModel,
 };
 use numpy::{IntoPyArray, PyArray0, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -131,7 +131,7 @@ macro_rules! impl_ridge_reg {
     ($name:ident, $rust_ix:ty, $rust_ix_smalr:ty, $py_ix:ty, $py_ix_smalr:ty, $pyr_ix:ty, $pyr_ix_smalr:ty) => {
         #[pyclass]
         pub struct $name {
-            reg: RidgeReg<$rust_ix, $rust_ix_smalr, f64>,
+            reg: LinReg<$rust_ix, $rust_ix_smalr>,
         }
         #[pymethods]
         impl $name {
@@ -146,15 +146,17 @@ macro_rules! impl_ridge_reg {
             ) -> PyResult<Self> {
                 let solver = if let Some(solvr) = solver {
                     if solvr == "sgd" {
-                        RidgeRegressionSolver::SGD
+                        LinearRegressionSolver::Sgd
                     } else if solvr == "exact" {
-                        RidgeRegressionSolver::EXACT
+                        LinearRegressionSolver::Exact
+                    } else if solvr == "svd" {
+                        LinearRegressionSolver::Svd
                     } else if solvr == "qr" {
-                        RidgeRegressionSolver::QR
+                        LinearRegressionSolver::Qr
                     } else if solvr == "cholesky" {
-                        RidgeRegressionSolver::CHOLESKY
+                        LinearRegressionSolver::Cholesky
                     } else if solvr == "sag" {
-                        RidgeRegressionSolver::SAG
+                        LinearRegressionSolver::Sag
                     } else {
                         return Err(PyValueError::new_err(format!(
                             "solver `{}` not supported",
@@ -162,18 +164,20 @@ macro_rules! impl_ridge_reg {
                         )));
                     }
                 } else {
-                    RidgeRegressionSolver::SGD
+                    LinearRegressionSolver::Sgd
                 };
-                let settings = RidgeRegressionSettings {
-                    alpha,
+                let settings = LinearRegressionSettings {
+                    l1_penalty: None,
+                    l2_penalty: Some(alpha),
+                    step_size: Some(0.001),
                     fit_intercept,
                     solver,
-                    tol: Some(tol.unwrap_or(0.0001)),
-                    random_state: Some(random_state.unwrap_or(0)),
+                    tol,
+                    random_state,
                     max_iter: Some(max_iter.unwrap_or(100000)),
                 };
                 Ok(Self {
-                    reg: RidgeReg::new(settings),
+                    reg: LinReg::new(settings),
                 })
             }
             pub fn fit(&mut self, x: $pyr_ix, y: $pyr_ix_smalr) -> PyResult<()> {
