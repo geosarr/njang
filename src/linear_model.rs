@@ -1,30 +1,20 @@
-mod lasso_regression;
+mod gradients;
 mod linear_regression;
-mod macros;
-mod ridge_regression;
 mod unit_test;
 extern crate alloc;
-use crate::traits::{Algebra, Container, Info};
-use alloc::vec::Vec;
-use core::ops::{Add, Div, Mul, Sub};
-use lasso_regression::LassoRegressionInternal;
-pub use lasso_regression::{LassoRegression, LassoRegressionSettings, LassoRegressionSolver};
-use linear_regression::LinearRegressionInternal;
-pub use linear_regression::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver};
-pub use macros::*;
-use ndarray::{
-    linalg::Dot, s, Array, Array1, Array2, ArrayView2, Axis, Dimension, Ix0, Ix1, Ix2, ShapeBuilder,
-};
+use crate::traits::Algebra;
+use core::ops::Sub;
+use gradients::*;
+pub use linear_regression::*;
+use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
-    rand::{Rng, SeedableRng},
+    rand::Rng,
     rand_distr::{uniform::SampleUniform, Uniform},
     RandomExt,
 };
-use num_traits::{Float, FromPrimitive, Zero};
+use num_traits::Float;
 use rand_chacha::ChaCha20Rng;
-use ridge_regression::RidgeRegressionInternal;
-pub use ridge_regression::{RidgeRegression, RidgeRegressionSettings, RidgeRegressionSolver};
 
 /// Used to preprocess data for linear models
 pub(crate) fn preprocess<X, Y, MX, MY>(x: &X, y: &Y) -> (X, MX, Y, MY)
@@ -69,12 +59,6 @@ pub(crate) trait LinearModelInternal {
     fn n_samples(&self) -> Option<usize> {
         None
     }
-    fn n_features(&self) -> Option<usize> {
-        None
-    }
-    fn step_size(&self) -> Option<Self::Scalar> {
-        None
-    }
 }
 
 macro_rules! impl_settings {
@@ -96,18 +80,9 @@ macro_rules! impl_settings {
             fn n_samples(&self) -> Option<usize> {
                 Some(self.n_samples)
             }
-            fn n_features(&self) -> Option<usize> {
-                Some(self.n_features)
-            }
-            fn step_size(&self) -> Option<Self::Scalar> {
-                self.step_size
-            }
         }
     };
 }
-impl_settings!(LinearRegressionInternal);
-impl_settings!(RidgeRegressionInternal);
-impl_settings!(LassoRegressionInternal);
 impl_settings!(RegressionInternal);
 
 pub(crate) fn exact<T, Y>(x: Array2<T>, z: ArrayView2<T>, y: &Y) -> Result<Y, LinalgError>
@@ -163,131 +138,4 @@ pub(crate) fn randn_2d<T: Float + SampleUniform, R: Rng>(
     let sqrt = T::from(m[0]).unwrap().sqrt();
     let high = T::one() / sqrt;
     Array::<T, Ix2>::random_using((m[0], m[1]), Uniform::new_inclusive(-high, high), rng)
-}
-
-pub(crate) fn init_grad_1d<T>(
-    x: &Array2<T>,
-    y: &Array1<T>,
-    mut grad: Array2<T>,
-    coef: &Array1<T>,
-    alpha: T,
-) -> (Array2<T>, Array1<T>)
-where
-    for<'a> T: Lapack + Mul<Array1<T>, Output = Array1<T>> + Mul<&'a Array1<T>, Output = Array1<T>>,
-{
-    for k in 0..x.nrows() {
-        let xi = x.row(k);
-        let yi = y[k];
-        (alpha * coef + (xi.dot(coef) - yi) * xi.to_owned()).assign_to(grad.slice_mut(s!(k, ..)));
-    }
-    let sum_grad = grad.sum_axis(Axis(0));
-    return (grad, sum_grad);
-}
-
-pub(crate) fn init_grad_2d<T>(
-    x: &Array2<T>,
-    y: &Array2<T>,
-    mut grad: Array2<T>,
-    coef: &Array2<T>,
-    alpha: T,
-) -> (Array2<T>, Array2<T>)
-where
-    for<'a> T: Lapack
-        + Mul<Array1<T>, Output = Array1<T>>
-        + Mul<&'a Array2<T>, Output = Array2<T>>
-        + Mul<&'a Array1<T>, Output = Array1<T>>,
-{
-    let (n_samples, n_regressions) = (x.nrows(), y.ncols());
-    for k in 0..n_samples {
-        let xi = x.row(k).to_owned();
-        let yi = y.row(k);
-        let error = xi.dot(coef) - yi;
-        let grad_norm = alpha * coef;
-        for r in 0..n_regressions {
-            let start = r * n_samples;
-            (grad_norm.column(r).to_owned() + error[r] * &xi)
-                .assign_to(grad.slice_mut(s!(start + k, ..)));
-        }
-    }
-    let mut sum_grad = Array2::<T>::zeros((n_regressions, x.ncols()));
-    for r in 0..n_regressions {
-        grad.slice(s!(r * n_samples..(r + 1) * n_samples, ..))
-            .sum_axis(Axis(0))
-            .assign_to(sum_grad.slice_mut(s!(r, ..)));
-    }
-    return (grad, sum_grad);
-}
-
-impl<T> Info for Array<T, Ix1>
-where
-    T: Copy + Zero + FromPrimitive + Add<Output = T> + Div<Output = T>,
-{
-    type MeanOutput = Array<T, Ix0>;
-    type RowOutput = T;
-    type ColOutput = T;
-    type ShapeOutput = Vec<usize>;
-    type ColMut = ();
-    type RowMut = ();
-    type NcolsOutput = ();
-    type NrowsOutput = ();
-    type SliceRowOutput = ();
-    fn mean(&self) -> Self::MeanOutput {
-        self.mean_axis(Axis(0)).unwrap()
-    }
-    fn get_row(&self, i: usize) -> Self::RowOutput {
-        self[i]
-    }
-    fn get_col(&self, i: usize) -> Self::ColOutput {
-        self[i]
-    }
-    fn shape(&self) -> Self::ShapeOutput {
-        Array::<T, Ix1>::shape(self).into()
-    }
-    fn col_mut(&mut self, _idx: usize, _elem: ()) {}
-    fn row_mut(&mut self, _idx: usize, _elem: ()) {}
-    fn slice_row(&self, _start: usize, _end: usize) {}
-    fn get_ncols(&self) {}
-    fn get_nrows(&self) {}
-}
-
-impl<T> Info for Array<T, Ix2>
-where
-    T: Copy + Zero + FromPrimitive + Add<Output = T> + Div<Output = T>,
-{
-    type MeanOutput = Array<T, Ix1>;
-    type RowOutput = Array<T, Ix1>;
-    type ColOutput = Array<T, Ix1>;
-    type ShapeOutput = Vec<usize>;
-    type ColMut = Array1<T>;
-    type RowMut = Array1<T>;
-    type NcolsOutput = usize;
-    type NrowsOutput = usize;
-    type SliceRowOutput = Array2<T>;
-    fn mean(&self) -> Self::MeanOutput {
-        self.mean_axis(Axis(0)).unwrap()
-    }
-    fn get_row(&self, i: usize) -> Self::RowOutput {
-        self.row(i).to_owned()
-    }
-    fn get_col(&self, i: usize) -> Self::ColOutput {
-        self.column(i).to_owned()
-    }
-    fn shape(&self) -> Self::ShapeOutput {
-        Array::<T, Ix2>::shape(self).into()
-    }
-    fn col_mut(&mut self, idx: usize, elem: Self::ColMut) {
-        self.column_mut(idx).assign(&elem);
-    }
-    fn row_mut(&mut self, idx: usize, elem: Self::RowMut) {
-        self.row_mut(idx).assign(&elem);
-    }
-    fn slice_row(&self, start: usize, end: usize) -> Self::SliceRowOutput {
-        self.slice(s![start..end, ..]).to_owned()
-    }
-    fn get_ncols(&self) -> Self::NcolsOutput {
-        self.ncols()
-    }
-    fn get_nrows(&self) -> Self::NrowsOutput {
-        self.nrows()
-    }
 }

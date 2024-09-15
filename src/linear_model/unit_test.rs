@@ -6,15 +6,6 @@ mod tests {
     use alloc::vec::Vec;
     use ndarray::{Array, Array1, Array2, Ix0, Ix1, Ix2};
 
-    const LINEAR_REGRESSION_SOLVERS: [LinearRegressionSolver; 6] = [
-        LinearRegressionSolver::SVD,
-        LinearRegressionSolver::SGD,
-        LinearRegressionSolver::BGD,
-        LinearRegressionSolver::QR,
-        LinearRegressionSolver::EXACT,
-        LinearRegressionSolver::CHOLESKY,
-    ];
-
     const REGRESSION_SOLVERS: [RegressionSolver; 7] = [
         RegressionSolver::Svd,
         RegressionSolver::Sgd,
@@ -25,15 +16,6 @@ mod tests {
         RegressionSolver::Cholesky,
     ];
 
-    const RIDGE_REGRESSION_SOLVERS: [RidgeRegressionSolver; 7] = [
-        RidgeRegressionSolver::SVD,
-        RidgeRegressionSolver::SAG,
-        RidgeRegressionSolver::SGD,
-        RidgeRegressionSolver::BGD,
-        RidgeRegressionSolver::QR,
-        RidgeRegressionSolver::EXACT,
-        RidgeRegressionSolver::CHOLESKY,
-    ];
     // from https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn.linear_model.LinearRegression
     #[allow(unused)]
     fn predictor() -> Array2<f32> {
@@ -161,79 +143,5 @@ mod tests {
     #[test]
     fn test_multi_reg_without_intercept() {
         multi_reg(0., 5e-3)
-    }
-
-    impl_test!(
-        assert_one_reg,
-        lin_one_reg,
-        LinearRegression,
-        LinearRegressionSettings,
-        one_reg_dataset,
-        LINEAR_REGRESSION_SOLVERS,
-        Ix1,
-        Ix0
-    );
-    impl_test!(
-        assert_one_reg,
-        ridge_one_reg,
-        RidgeRegression,
-        RidgeRegressionSettings,
-        one_reg_dataset,
-        RIDGE_REGRESSION_SOLVERS,
-        Ix1,
-        Ix0
-    );
-    impl_test!(
-        assert_multi_reg,
-        lin_multi_reg,
-        LinearRegression,
-        LinearRegressionSettings,
-        multi_reg_dataset,
-        LINEAR_REGRESSION_SOLVERS,
-        Ix2,
-        Ix1
-    );
-    impl_test!(
-        assert_multi_reg,
-        ridge_multi_reg,
-        RidgeRegression,
-        RidgeRegressionSettings,
-        multi_reg_dataset,
-        RIDGE_REGRESSION_SOLVERS,
-        Ix2,
-        Ix1
-    );
-
-    #[test]
-    fn test_lin_one_reg_with_intercept() {
-        lin_one_reg(3., 1e-3)
-    }
-    #[test]
-    fn test_lin_one_reg_without_intercept() {
-        lin_one_reg(0., 1e-3)
-    }
-    #[test]
-    fn test_lin_multi_reg_with_intercept() {
-        lin_multi_reg(3., 1e-3)
-    }
-    #[test]
-    fn test_lin_multi_reg_without_intercept() {
-        lin_multi_reg(0., 1e-3)
-    }
-    #[test]
-    fn test_ridge_one_reg_with_intercept() {
-        ridge_one_reg(3., 1e-3)
-    }
-    #[test]
-    fn test_ridge_one_reg_without_intercept() {
-        ridge_one_reg(0., 1e-3)
-    }
-    #[test]
-    fn test_ridge_multi_reg_with_intercept() {
-        ridge_multi_reg(3., 1e-3)
-    }
-    #[test]
-    fn test_ridge_multi_reg_without_intercept() {
-        ridge_multi_reg(0., 1e-3)
     }
 }

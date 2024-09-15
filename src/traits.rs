@@ -1,6 +1,4 @@
-use core::ops::Mul;
 use ndarray::*;
-use ndarray_linalg::Lapack;
 use num_traits::{Float, FromPrimitive};
 /// Implements classic steps of a regression model.
 pub trait RegressionModel {
@@ -24,39 +22,6 @@ pub trait RegressionModel {
 //     fn predict(&self, x: &Self::X) -> Self::PredictResult;
 //     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult;
 // }
-
-/// Implements some methods on vectors and matrices.
-pub trait Info {
-    type MeanOutput;
-    type RowOutput;
-    type ColOutput;
-    type ShapeOutput;
-    type ColMut;
-    type RowMut;
-    type NcolsOutput;
-    type NrowsOutput;
-    type SliceRowOutput;
-    /// Mean of each column for 2d containers and mean of all elements for 1d
-    /// containers.
-    fn mean(&self) -> Self::MeanOutput;
-    /// Like copy, view of a "row".
-    fn get_row(&self, i: usize) -> Self::RowOutput;
-    /// Like copy, view of a "column".
-    fn get_col(&self, i: usize) -> Self::ColOutput;
-    /// Like a pair (number of rows, number of columns) for 2d containers and
-    /// (n_elements) for 1d containers.
-    fn shape(&self) -> Self::ShapeOutput;
-    /// Mutate column number idx of a 2d container with elem.
-    fn col_mut(&mut self, idx: usize, elem: Self::ColMut);
-    /// Mutate row number idx of a 2d container with elem.
-    fn row_mut(&mut self, idx: usize, elem: Self::RowMut);
-    /// Slices rows of a matrix, taking all columns
-    fn slice_row(&self, start: usize, end: usize) -> Self::SliceRowOutput;
-    /// Number of columns for 2d containers.
-    fn get_ncols(&self) -> Self::NcolsOutput;
-    /// Number of rows for 2d containers.
-    fn get_nrows(&self) -> Self::NrowsOutput;
-}
 
 pub trait Container {
     type Elem;
@@ -139,23 +104,3 @@ impl<T: Float + FromPrimitive> Algebra for Array2<T> {
         })
     }
 }
-
-pub(crate) trait Scalar<X>
-where
-    for<'a> Self: Lapack
-        + Float
-        + ScalarOperand
-        + Mul<X, Output = X>
-        + Mul<&'a X, Output = X>
-        + core::fmt::Debug
-        + FromPrimitive,
-{
-}
-macro_rules! impl_scalar {
-    ($t:ty) => {
-        impl Scalar<Array1<$t>> for $t {}
-        impl Scalar<Array2<$t>> for $t {}
-    };
-}
-impl_scalar!(f32);
-impl_scalar!(f64);
