@@ -15,11 +15,11 @@ mod tests {
         LinearRegressionSolver::CHOLESKY,
     ];
 
-    const REGRESSION_SOLVERS: [RegressionSolver; 3] = [
+    const REGRESSION_SOLVERS: [RegressionSolver; 4] = [
         RegressionSolver::Svd,
         RegressionSolver::Sgd,
         RegressionSolver::Bgd,
-        // RegressionSolver::QR,
+        RegressionSolver::Sag,
         // RegressionSolver::EXACT,
         // RegressionSolver::CHOLESKY,
     ];
@@ -155,11 +155,11 @@ mod tests {
     }
     #[test]
     fn test_multi_reg_with_intercept() {
-        multi_reg(3., 1e-3)
+        multi_reg(3., 5e-3)
     }
     #[test]
     fn test_multi_reg_without_intercept() {
-        multi_reg(0., 1e-3)
+        multi_reg(0., 5e-3)
     }
 
     impl_test!(

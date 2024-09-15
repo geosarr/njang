@@ -1,10 +1,16 @@
 use crate::{
-    linear_model::{cholesky, exact, preprocess, qr, randn_1d, randn_2d, square_loss_gradient},
-    solver::{batch_gradient_descent, stochastic_gradient_descent},
+    linear_model::{
+        cholesky, exact, init_grad_2d, preprocess, qr, randn_1d, randn_2d, square_loss_gradient,
+    },
+    solver::{batch_gradient_descent, stochastic_average_gradient, stochastic_gradient_descent},
     traits::{Algebra, Container, RegressionModel},
 };
+use core::convert::identity;
 use core::ops::{Add, Mul, Sub};
-use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix0, Ix1, Ix2, OwnedRepr, ScalarOperand};
+use ndarray::{
+    linalg::Dot, s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2, OwnedRepr,
+    ScalarOperand,
+};
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
 use ndarray_rand::rand::SeedableRng;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
@@ -55,11 +61,11 @@ pub enum RegressionSolver {
     ///
     /// **This solver supports all models.**
     Bgd,
-    // /// Uses Stochastic Average Gradient
-    // ///
-    // /// The user should standardize the input predictors, otherwise the algorithm
-    // /// may not converge.
-    // SAG,
+    /// Uses Stochastic Average Gradient
+    ///
+    /// The user should standardize the input predictors, otherwise the
+    /// algorithm may not converge.
+    Sag,
 }
 
 /// This is responsible for processing settings, setting default values
@@ -68,8 +74,8 @@ pub(crate) struct RegressionInternal<T> {
     pub n_samples: usize,
     pub n_features: usize,
     pub n_targets: usize,
-    pub l1_penalty: Option<T>, // for Lasso Regression
-    pub l2_penalty: Option<T>, // for Ridge Regression
+    pub l1_penalty: Option<T>,
+    pub l2_penalty: Option<T>,
     pub tol: Option<T>,
     pub step_size: Option<T>,
     pub rng: Option<ChaCha20Rng>,
@@ -304,14 +310,25 @@ impl<C: Container, I> Regression<C, I> {
         C::Elem: Copy + FromPrimitive + core::fmt::Debug,
     {
         // Use here a match pattern with enum instead of if else's ?
-        if self.is_ridge() {
-            self.set_l2_penalty_to_internal();
-        } else if self.is_lasso() {
+        if self.is_lasso() {
             self.set_l1_penalty_to_internal();
+        } else if self.is_ridge() {
+            self.set_l2_penalty_to_internal();
         } else if self.is_elastic_net() {
             self.set_l1_penalty_to_internal();
             self.set_l2_penalty_to_internal();
         }
+    }
+    fn set_internal<X: Container>(&mut self, x: &X, y: &C)
+    where
+        C::Elem: Float + FromPrimitive + core::fmt::Debug,
+    {
+        self.set_sample_to_internal(x, y);
+        self.set_rng_to_internal();
+        self.set_max_iter_to_internal();
+        self.set_tol_to_internal();
+        self.set_step_size_to_internal();
+        self.set_penalty_to_internal();
     }
     fn scale_step_size(&mut self)
     where
@@ -327,12 +344,12 @@ impl<C: Container, I> Regression<C, I> {
     where
         C::Elem: Float + FromPrimitive,
     {
-        if self.is_ridge() {
+        if self.is_lasso() {
             // L2-penalty
-            self.scale_l2_penalty();
-        } else if self.is_lasso() {
-            // L1-penalty
             self.scale_l1_penalty();
+        } else if self.is_ridge() {
+            // L1-penalty
+            self.scale_l2_penalty();
         } else if self.is_elastic_net() {
             // L1 and L2 penalties
             self.scale_l1_penalty();
@@ -407,7 +424,7 @@ impl_scale_penalty!(scale_l1_penalty, l1_penalty);
 impl_scale_penalty!(scale_l2_penalty, l2_penalty);
 
 macro_rules! impl_regression {
-    ($ix:ty, $ix_smaller:ty, $randn:ident) => {
+    ($ix:ty, $ix_smaller:ty, $randn:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {
         impl<T: Clone> Regression<Array<T, $ix>, Array<T, $ix_smaller>> {
             fn solve(
                 &mut self,
@@ -454,17 +471,11 @@ macro_rules! impl_regression {
                         }
                     }
                     RegressionSolver::Sgd => {
-                        self.set_sample_to_internal(x, y);
-                        self.set_rng_to_internal();
-                        self.set_max_iter_to_internal();
-                        self.set_tol_to_internal();
-                        self.set_step_size_to_internal();
-                        self.set_penalty_to_internal();
+                        self.set_internal(x, y);
                         // Rescale step_size and penalty(ies) to scale gradients correctly
-                        // [Specific to this algorithm]
                         self.scale_step_size();
                         self.scale_penalty();
-                        println!("Internal after setting:\n{:?}", self.internal.clone());
+                        // println!("Internal after setting:\n{:?}", self.internal.clone());
                         let (n_targets, n_features, rng) = (
                             self.internal.n_targets,
                             self.internal.n_features,
@@ -480,13 +491,8 @@ macro_rules! impl_regression {
                         ))
                     }
                     RegressionSolver::Bgd => {
-                        self.set_sample_to_internal(x, y);
-                        self.set_rng_to_internal();
-                        self.set_max_iter_to_internal();
-                        self.set_tol_to_internal();
-                        self.set_step_size_to_internal();
-                        self.set_penalty_to_internal();
-                        println!("Internal after setting:\n{:?}", self.internal.clone());
+                        self.set_internal(x, y);
+                        // println!("Internal after setting:\n{:?}", self.internal.clone());
                         let (n_targets, n_features, rng) = (
                             self.internal.n_targets,
                             self.internal.n_features,
@@ -500,6 +506,33 @@ macro_rules! impl_regression {
                             self.gradient_function(),
                             &self.internal,
                         ))
+                    }
+                    RegressionSolver::Sag => {
+                        self.set_internal(x, y);
+                        // Rescale step_size and penalty(ies) to scale gradients correctly
+                        self.scale_step_size();
+                        self.scale_penalty();
+                        println!("Internal after setting:\n{:?}", self.internal.clone());
+                        let (n_targets, n_features, n_samples, rng) = (
+                            self.internal.n_targets,
+                            self.internal.n_features,
+                            self.internal.n_samples,
+                            self.internal.rng.as_mut().unwrap(),
+                        );
+                        let _y = $reshape_to_2d(y); //
+                        let coef = randn_2d(&[n_features, n_targets], rng);
+                        let grad = Array2::<_>::zeros((n_samples * n_targets, n_features));
+                        let (gradients, sum_gradients) = init_grad(x, &_y, grad, &coef, T::zero());
+                        let coef = stochastic_average_gradient(
+                            x,
+                            &_y,
+                            coef,
+                            self.gradient_function(),
+                            &self.internal,
+                            gradients,
+                            sum_gradients,
+                        );
+                        Ok($reshape_to_normal(coef))
                     }
                 }
             }
@@ -540,8 +573,59 @@ macro_rules! impl_regression {
         }
     };
 }
-impl_regression!(Ix1, Ix0, randn_1d);
-impl_regression!(Ix2, Ix1, randn_2d);
+
+pub fn reshape_to_2d<T, Y>(y: &Y) -> Array2<T>
+where
+    T: Float,
+    Y: Container<Elem = T>,
+    for<'a> &'a Y: Add<Array2<T>, Output = Array2<T>>,
+{
+    let shape = y.dimension().to_vec();
+    if shape.len() == 1 {
+        (y + Array2::zeros((1, shape[0]))).t().to_owned()
+    } else {
+        y + Array2::zeros((shape[0], shape[1]))
+    }
+}
+
+pub fn reshape_to_1d<T: Clone>(y: Array2<T>) -> Array1<T> {
+    y.column(0).to_owned()
+}
+pub(crate) fn init_grad<T>(
+    x: &Array2<T>,
+    y: &Array2<T>,
+    mut grad: Array2<T>,
+    coef: &Array2<T>,
+    alpha: T,
+) -> (Array2<T>, Array2<T>)
+where
+    for<'a> T: Lapack + ScalarOperand, /*
+                                        * + Mul<Array1<T>, Output = Array1<T>>
+                                        * + Mul<&'a Array2<T>, Output = Array2<T>>
+                                        * + Mul<&'a Array1<T>, Output = Array1<T>>, */
+{
+    let (n_samples, n_regressions) = (x.nrows(), y.ncols());
+    for k in 0..n_samples {
+        let xi = x.row(k).to_owned();
+        let yi = y.row(k);
+        let error = xi.dot(coef) - yi;
+        let grad_norm = coef * alpha;
+        for r in 0..n_regressions {
+            let start = r * n_samples;
+            (grad_norm.column(r).to_owned() + &xi * error[r])
+                .assign_to(grad.slice_mut(s!(start + k, ..)));
+        }
+    }
+    let mut sum_grad = Array2::<T>::zeros((n_regressions, x.ncols()));
+    for r in 0..n_regressions {
+        grad.slice(s!(r * n_samples..(r + 1) * n_samples, ..))
+            .sum_axis(Axis(0))
+            .assign_to(sum_grad.slice_mut(s!(r, ..)));
+    }
+    return (grad, sum_grad);
+}
+impl_regression!(Ix1, Ix0, randn_1d, reshape_to_1d, reshape_to_2d);
+impl_regression!(Ix2, Ix1, randn_2d, identity, reshape_to_2d);
 
 fn linear_regression_gradient<T: Lapack, Y>(
     x: &Array2<T>,
@@ -608,4 +692,47 @@ where
     let (l1_penalty, l2_penalty) = (settings.l1_penalty.unwrap(), settings.l2_penalty.unwrap());
     return (square_loss_gradient(x, y, coef) + coef.sign() * l1_penalty + coef * l2_penalty)
         * (-step_size);
+}
+
+#[test]
+fn code() {
+    use crate::linear_model::RegressionInternal;
+    use ndarray::{array, Array1};
+
+    let x = array![[0., 1.], [1., -1.], [-2., 3.]];
+    println!("x:\n{:?}\n", x);
+    let coef = array![[1.], [2.]];
+    println!("coef:\n{:?}\n", coef);
+    let y = x.dot(&coef);
+    println!("y:\n{:?}\n", y);
+    let n_targets = if y.shape().len() == 1 {
+        1
+    } else {
+        y.shape()[1]
+    };
+
+    let grad = Array2::<_>::zeros((x.nrows() * n_targets, x.ncols()));
+    let (gradients, sum_gradients) = init_grad_2d(&x, &y, grad, &coef, 0.);
+    let result = stochastic_average_gradient(
+        &x,
+        &y,
+        Array2::zeros((coef.nrows(), n_targets)),
+        linear_regression_gradient,
+        &RegressionInternal {
+            n_samples: x.nrows(),
+            n_features: x.ncols(),
+            n_targets: n_targets,
+            l1_penalty: None,
+            l2_penalty: None,
+            tol: Some(1e-6),
+            step_size: Some(1e-3),
+            rng: Some(ChaCha20Rng::seed_from_u64(0)),
+            max_iter: Some(100000),
+        },
+        gradients,
+        sum_gradients,
+    );
+    // println!("{:?}\n", core::convert::identity(x));
+    println!("{:?}\n", result);
+    // println!("{:?}", reshape_to_1d(result, 1, 0));
 }

@@ -66,6 +66,15 @@ pub(crate) trait LinearModelInternal {
     fn n_targets(&self) -> Option<usize> {
         None
     }
+    fn n_samples(&self) -> Option<usize> {
+        None
+    }
+    fn n_features(&self) -> Option<usize> {
+        None
+    }
+    fn step_size(&self) -> Option<Self::Scalar> {
+        None
+    }
 }
 
 macro_rules! impl_settings {
@@ -83,6 +92,15 @@ macro_rules! impl_settings {
             }
             fn n_targets(&self) -> Option<usize> {
                 Some(self.n_targets)
+            }
+            fn n_samples(&self) -> Option<usize> {
+                Some(self.n_samples)
+            }
+            fn n_features(&self) -> Option<usize> {
+                Some(self.n_features)
+            }
+            fn step_size(&self) -> Option<Self::Scalar> {
+                self.step_size
             }
         }
     };
