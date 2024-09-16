@@ -18,6 +18,7 @@ ndarray-linalg = { version = "0.16.0", features = ["intel-mkl-static"] }
 rand_chacha = { version = "0.3.1" }
 ndarray-rand = { version = "0.14.0" }
 rayon = { version = "1.10.0" }
+thiserror-no-std = "2.0.2"
 
 [features]
 default = ["std"]

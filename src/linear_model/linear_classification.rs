@@ -1,3 +1,4 @@
+#[derive(Default, Debug, Clone, Copy)]
 pub enum LinearClassificationSolver {
     /// Uses Stochastic Gradient Descent
     ///

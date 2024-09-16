@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+mod error;
 pub mod linear_model;
 mod solver;
 mod traits;

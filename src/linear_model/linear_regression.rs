@@ -1,3 +1,4 @@
+use crate::error::NjangError;
 use crate::{
     linear_model::{
         cholesky, elastic_net_regression_gradient, exact, lasso_regression_gradient,
@@ -396,7 +397,6 @@ macro_rules! impl_settings_to_internal {
                         .$field_name
                         .unwrap_or(C::Elem::from_f32($default).unwrap()),
                 );
-                // println!("\nField: {:?}\n", self.internal.$field_name);
             }
         }
     };
@@ -431,58 +431,99 @@ impl_scale_penalty!(scale_l2_penalty, l2_penalty);
 
 macro_rules! impl_regression {
     ($ix:ty, $ix_smaller:ty, $randu:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {
-        impl<T: Clone> LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>> {
+        impl<T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform + core::fmt::Debug>
+            LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
+        {
+            fn linalg_solve<S>(
+                &mut self,
+                x: &Array2<T>,
+                y: &Array<T, $ix>,
+                solver: S,
+            ) -> Result<Array<T, $ix>, NjangError>
+            where
+                S: Fn(
+                    Array2<T>,
+                    ArrayView2<T>,
+                    &Array<T, $ix>,
+                ) -> Result<Array<T, $ix>, LinalgError>,
+            {
+                if self.is_linear() | self.is_ridge() {
+                    self.set_sample_to_internal(x, y);
+                    let (n_features, n_samples) =
+                        (self.internal.n_features, self.internal.n_samples);
+                    let xt = x.t();
+                    if n_samples >= n_features {
+                        if self.is_linear() {
+                            Ok(match solver(xt.dot(x), xt, y) {
+                                Err(error) => return Err(NjangError::Linalg(error)),
+                                Ok(value) => value,
+                            })
+                        } else {
+                            self.set_l2_penalty_to_internal();
+                            let penalty = self.internal.l2_penalty.unwrap();
+                            Ok(
+                                match solver((xt.dot(x) + Array2::eye(n_features) * penalty), xt, y)
+                                {
+                                    Err(error) => return Err(NjangError::Linalg(error)),
+                                    Ok(value) => value,
+                                },
+                            )
+                        }
+                    } else {
+                        if self.is_linear() {
+                            let dual = match solver(x.dot(&xt), Array2::eye(n_samples).view(), y) {
+                                Err(error) => return Err(NjangError::Linalg(error)),
+                                Ok(value) => value,
+                            };
+                            Ok(xt.dot(&dual))
+                        } else {
+                            self.set_l2_penalty_to_internal();
+                            let penalty = self.internal.l2_penalty.unwrap();
+                            let eye = Array2::eye(n_samples);
+                            let dual = match solver(x.dot(&xt) + &eye * penalty, eye.view(), y) {
+                                Err(error) => return Err(NjangError::Linalg(error)),
+                                Ok(value) => value,
+                            };
+                            Ok(xt.dot(&dual))
+                        }
+                    }
+                } else {
+                    return Err(NjangError::NotSupported { item: "Solver" });
+                }
+            }
+
             fn solve(
                 &mut self,
                 x: &Array2<T>,
                 y: &Array<T, $ix>,
                 fit_intercept: bool,
-            ) -> Result<Array<T, $ix>, LinalgError>
-            where
-                T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform + core::fmt::Debug,
-            {
-                match self.settings.solver {
+            ) -> Result<Array<T, $ix>, NjangError> {
+                let solver = self.settings.solver;
+                match solver {
                     LinearRegressionSolver::Svd => {
-                        if self.is_ridge() | self.is_linear() {
+                        if self.is_linear() {
                             Ok(x.least_squares(y)?.solution)
+                        } else if self.is_ridge() {
+                            self.set_l2_penalty_to_internal();
+                            let (xt, alpha) = (x.t(), self.internal.l2_penalty.unwrap());
+                            let xtx_pen = xt.dot(x) + Array2::eye(x.ncols()) * alpha;
+                            let xty = xt.dot(y);
+                            Ok(match xtx_pen.least_squares(&xty) {
+                                Ok(value) => value.solution,
+                                Err(error) => return Err(NjangError::Linalg(error)),
+                            })
                         } else {
-                            // TODO: use an error wrapper instead.
-                            panic!("Not supported.");
+                            return Err(NjangError::NotSupported { item: "Solver" });
                         }
                     }
-                    LinearRegressionSolver::Exact => {
-                        if self.is_ridge() | self.is_linear() {
-                            let xct = x.t();
-                            exact(xct.dot(x), xct, y)
-                        } else {
-                            // TODO: use an error wrapper instead.
-                            panic!("Not supported.");
-                        }
-                    }
-                    LinearRegressionSolver::Qr => {
-                        if self.is_ridge() | self.is_linear() {
-                            let xct = x.t();
-                            qr(xct.dot(x), xct, y)
-                        } else {
-                            // TODO: use an error wrapper instead.
-                            panic!("Not supported.");
-                        }
-                    }
-                    LinearRegressionSolver::Cholesky => {
-                        if self.is_ridge() | self.is_linear() {
-                            let xct = x.t();
-                            cholesky(xct.dot(x), xct, y)
-                        } else {
-                            // TODO: use an error wrapper instead.
-                            panic!("Not supported.");
-                        }
-                    }
+                    LinearRegressionSolver::Exact => self.linalg_solve(x, y, exact),
+                    LinearRegressionSolver::Qr => self.linalg_solve(x, y, qr),
+                    LinearRegressionSolver::Cholesky => self.linalg_solve(x, y, cholesky),
                     LinearRegressionSolver::Sgd => {
                         self.set_internal(x, y);
                         // Rescale step_size and penalty(ies) to scale gradients correctly
                         self.scale_step_size();
                         self.scale_penalty();
-                        // println!("Internal after setting:\n{:?}", self.internal.clone());
                         let (n_targets, n_features, rng) = (
                             self.internal.n_targets,
                             self.internal.n_features,
@@ -499,7 +540,6 @@ macro_rules! impl_regression {
                     }
                     LinearRegressionSolver::Bgd => {
                         self.set_internal(x, y);
-                        // println!("Internal after setting:\n{:?}", self.internal.clone());
                         let (n_targets, n_features, rng) = (
                             self.internal.n_targets,
                             self.internal.n_features,
@@ -519,7 +559,6 @@ macro_rules! impl_regression {
                         // Rescale step_size and penalty(ies) to scale gradients correctly
                         self.scale_step_size();
                         self.scale_penalty();
-                        println!("Internal after setting:\n{:?}", self.internal.clone());
                         let n_targets = self.internal.n_targets;
                         if self.is_ridge() | self.is_elastic_net() {
                             // Schmidt, M., Roux, N. L., & Bach, F. (2013)
@@ -542,7 +581,6 @@ macro_rules! impl_regression {
                                 .as_mut()
                                 .map(|p| *p = T::one() / (max_squared_sum + fi + alpha_norm));
                         }
-                        // self.internal
                         let y_2d = $reshape_to_2d(y); // TODO: Improvement needed to avoid copy or broadcasting
                         let (n_features, rng) = (
                             self.internal.n_features,
@@ -566,11 +604,11 @@ macro_rules! impl_regression {
                 }
             }
         }
-        impl<T: Clone> RegressionModel for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
-        where
-            T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform,
+
+        impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform> RegressionModel
+            for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
         {
-            type FitResult = Result<(), LinalgError>;
+            type FitResult = Result<(), NjangError>;
             type X = Array2<T>;
             type Y = Array<T, $ix>;
             type PredictResult = Result<Array<T, $ix>, ()>;
@@ -578,11 +616,17 @@ macro_rules! impl_regression {
                 let fit_intercept = self.settings.fit_intercept;
                 if fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
-                    let coef = self.solve(&x_centered, &y_centered, fit_intercept)?;
+                    let coef = match self.solve(&x_centered, &y_centered, fit_intercept) {
+                        Err(error) => return Err(error),
+                        Ok(value) => value,
+                    };
                     self.parameter.intercept = Some(y_mean - x_mean.dot(&coef));
                     self.parameter.coef = Some(coef);
                 } else {
-                    self.parameter.coef = Some(self.solve(x, y, fit_intercept)?);
+                    self.parameter.coef = Some(match self.solve(x, y, fit_intercept) {
+                        Err(error) => return Err(error),
+                        Ok(value) => value,
+                    });
                 }
                 Ok(())
             }
@@ -655,46 +699,37 @@ where
 impl_regression!(Ix1, Ix0, randu_1d, reshape_to_1d, reshape_to_2d);
 impl_regression!(Ix2, Ix1, randu_2d, identity, reshape_to_2d);
 
-#[test]
-fn code() {
-    use crate::linear_model::LinearRegressionInternal;
-    use ndarray::array;
+// #[test]
+// fn code() {
+//     use ndarray::array;
 
-    let x = array![[0., 1.], [1., -1.], [-2., 3.]];
-    println!("x:\n{:?}\n", x);
-    let coef = array![[1.], [2.]];
-    println!("coef:\n{:?}\n", coef);
-    let y = x.dot(&coef);
-    println!("y:\n{:?}\n", y);
-    let n_targets = if y.shape().len() == 1 {
-        1
-    } else {
-        y.shape()[1]
-    };
+//     let x = array![[0., 0., 1.], [1., 0., 0.]];
+//     println!("x:\n{:?}\n", x);
+//     println!("xxt:\n{:?}\n", x.dot(&x.t()));
+//     let coef = array![[1., 1.], [2., 2.], [3., 3.]];
+//     println!("coef:\n{:?}\n", coef);
+//     let y = x.dot(&coef);
+//     println!("y:\n{:?}\n", y);
+//     println!("xty:\n{:?}\n", x.t().dot(&y));
 
-    let settings = LinearRegressionInternal {
-        n_samples: x.nrows(),
-        n_features: x.ncols(),
-        n_targets: n_targets,
-        l1_penalty: None,
-        l2_penalty: None,
-        tol: Some(1e-6),
-        step_size: Some(1e-3),
-        rng: Some(ChaCha20Rng::seed_from_u64(0)),
-        max_iter: Some(100000),
-    };
-    let (gradients, sum_gradients) =
-        init_grad(&x, &y, &coef, linear_regression_gradient, &settings);
-    let result = stochastic_average_gradient(
-        &x,
-        &y,
-        Array2::zeros((coef.nrows(), n_targets)),
-        linear_regression_gradient,
-        &settings,
-        gradients,
-        sum_gradients,
-    );
-    // println!("{:?}\n", core::convert::identity(x));
-    println!("{:?}\n", result);
-    // println!("{:?}", reshape_to_1d(result, 1, 0));
-}
+//     let settings = LinearRegressionSettings {
+//         fit_intercept: false,
+//         solver: LinearRegressionSolver::Svd,
+//         l1_penalty: None,
+//         l2_penalty: None, //Some(1e-6),
+//         tol: Some(1e-6),
+//         step_size: Some(1e-3),
+//         random_state: Some(0),
+//         max_iter: Some(100000),
+//     };
+//     let mut model = LinearRegression::<Array2<_>, _>::new(settings);
+//     match model.fit(&x, &y) {
+//         Ok(_) => {
+//             println!("{:?}", model.coef());
+//             println!("{:?}", model.intercept());
+//         }
+//         Err(error) => {
+//             println!("{:?}", error);
+//         }
+//     };
+// }
