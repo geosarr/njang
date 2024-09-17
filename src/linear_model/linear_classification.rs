@@ -1,7 +1,9 @@
-use ndarray::{Array, Array1, Array2, Ix0, Ix1, ScalarOperand};
+use core::{hash::Hash, marker::PhantomData};
+
+use ndarray::{Array, Array1, Array2, Axis, Ix0, Ix1, ScalarOperand};
 use ndarray_linalg::Lapack;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
-use num_traits::Float;
+use num_traits::{zero, Float};
 
 use crate::{
     error::NjangError,
@@ -9,6 +11,7 @@ use crate::{
 };
 
 use super::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver};
+use std::collections::HashSet;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum LinearClassificationSolver {
@@ -53,14 +56,15 @@ pub struct RidgeClassificationSettings<T> {
     pub max_iter: Option<usize>,
 }
 
-pub struct RidgeClassification<C, I>
+pub struct RidgeClassification<C, I, L = i32>
 where
     C: Container,
 {
     model: LinearRegression<C, I>,
+    labels: Vec<L>,
 }
 
-impl<C: Container, I> RidgeClassification<C, I> {
+impl<C: Container, I, L> RidgeClassification<C, I, L> {
     pub fn new(settings: RidgeClassificationSettings<C::Elem>) -> Self
     where
         C::Elem: Float,
@@ -77,6 +81,7 @@ impl<C: Container, I> RidgeClassification<C, I> {
         };
         Self {
             model: LinearRegression::new(lin_settings),
+            labels: Vec::new(),
         }
     }
     /// Coefficients of the model
@@ -89,19 +94,57 @@ impl<C: Container, I> RidgeClassification<C, I> {
     }
 }
 
-impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform> ClassificationModel
-    for RidgeClassification<Array<T, Ix1>, Array<T, Ix0>>
+fn unique_labels<L>(labels: L) -> Vec<L::Item>
+where
+    L: IntoIterator,
+    L::Item: Eq + Hash + Ord + Copy,
+{
+    let unique_labels = labels.into_iter().collect::<HashSet<_>>();
+    let mut unique_labels = unique_labels.into_iter().collect::<Vec<_>>();
+    unique_labels.sort();
+    unique_labels
+}
+
+fn argmax<I>(iterable: I) -> Vec<L::Item>
+where
+    I: IntoIterator,
+    I::Item: Eq + Ord + Copy,
+{
+    let mut container = iterable.into_iter().collect::<Vec<_>>();
+    container.arg
+}
+
+impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform, L: Eq + Hash + Ord + Copy>
+    ClassificationModel for RidgeClassification<Array2<T>, Array1<T>, L>
 {
     type FitResult = Result<(), NjangError>;
     type X = Array2<T>;
-    type Y = Array<T, Ix1>;
-    type PredictResult = Result<Array<T, Ix1>, ()>;
-    type PredictProbaResult = Result<Array<T, Ix1>, ()>;
+    type Y = Array1<L>;
+    type PredictResult = Result<Array2<T>, ()>;
+    type PredictProbaResult = Result<Array2<T>, ()>;
     fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
-        self.model.fit(x, y)
+        self.labels = unique_labels(y.iter()).into_iter().copied().collect();
+        let mut y_reg = Array2::<T>::zeros((y.len(), self.labels.len()));
+        y_reg
+            .axis_iter_mut(Axis(0))
+            .enumerate()
+            .map(|(sample, mut row)| {
+                let pos = self.labels.binary_search(&y[sample]).unwrap(); // Safe to .unwrap() since self.labels is built from y.
+                row[pos] = T::one();
+            })
+            .for_each(drop);
+        println!("y_reg:\n{:?}", y_reg);
+        self.model.fit(x, &y_reg)
+        // Ok(())
     }
     fn predict(&self, x: &Self::X) -> Self::PredictResult {
-        self.model.predict(x)
+        let prediction = self
+            .model
+            .predict(x)?
+            .axis_iter(Axis(0))
+            .map(|row| self.labels[argmax(row.iter().enumerate())]);
+
+        // self.model.predict(x)
     }
     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult {
         Err(())
@@ -111,15 +154,23 @@ impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform> Classificat
 #[test]
 fn code() {
     use ndarray::array;
+    use std::collections::HashSet;
+    let kmers: Vec<u8> = vec![64, 64, 64, 65, 65, 65];
+    let nodes = kmers.iter().copied().count();
+    println!("{:?}", nodes);
+    // println!("{:?}", y);
+    // println!("{:?}", unique_labels(y.iter()));
+    // println!("{:?}",);
 
     let x = array![[0., 0., 1.], [1., 0., 0.]];
-    println!("x:\n{:?}\n", x);
-    println!("xxt:\n{:?}\n", x.dot(&x.t()));
-    let coef = array![1., 2., 3.];
-    println!("coef:\n{:?}\n", coef);
-    let y = x.dot(&coef);
-    println!("y:\n{:?}\n", y);
-    println!("xty:\n{:?}\n", x.t().dot(&y));
+    let y = array!["sale", "propre"];
+    // println!("x:\n{:?}\n", x);
+    // println!("xxt:\n{:?}\n", x.dot(&x.t()));
+    // let coef = array![1., 2., 3.];
+    // println!("coef:\n{:?}\n", coef);
+    // let y = x.dot(&coef);
+    // println!("y:\n{:?}\n", y);
+    // println!("xty:\n{:?}\n", x.t().dot(&y));
 
     let settings = RidgeClassificationSettings {
         fit_intercept: false,
@@ -130,10 +181,19 @@ fn code() {
         random_state: Some(0),
         max_iter: Some(100000),
     };
-    let mut model = RidgeClassification::<Array1<_>, _>::new(settings);
+    let mut model = RidgeClassification::<Array2<_>, _, &str>::new(settings);
     match model.fit(&x, &y) {
         Ok(_) => {
             println!("{:?}", model.coef());
+        }
+        Err(error) => {
+            println!("{:?}", error);
+        }
+    };
+
+    match model.predict(&x) {
+        Ok(value) => {
+            println!("\ny_pred:\n{:?}", value);
         }
         Err(error) => {
             println!("{:?}", error);
