@@ -105,13 +105,27 @@ where
     unique_labels
 }
 
-fn argmax<I>(iterable: I) -> Vec<L::Item>
+fn argmax<I, T>(iterable: I) -> Result<usize, isize>
 where
-    I: IntoIterator,
-    I::Item: Eq + Ord + Copy,
+    I: IntoIterator<Item = (usize, T)>,
+    T: Float,
 {
-    let mut container = iterable.into_iter().collect::<Vec<_>>();
-    container.arg
+    let mut m = -1;
+    let mut max = T::neg_infinity();
+    iterable
+        .into_iter()
+        .map(|(ix, val)| {
+            if val > max {
+                m = ix as isize;
+                max = val;
+            }
+        })
+        .for_each(drop);
+    if m >= 0 {
+        Ok(m as usize)
+    } else {
+        Err(m) // Empty iterator
+    }
 }
 
 impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform, L: Eq + Hash + Ord + Copy>
@@ -120,7 +134,7 @@ impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform, L: Eq + Has
     type FitResult = Result<(), NjangError>;
     type X = Array2<T>;
     type Y = Array1<L>;
-    type PredictResult = Result<Array2<T>, ()>;
+    type PredictResult = Result<Array1<L>, ()>;
     type PredictProbaResult = Result<Array2<T>, ()>;
     fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
         self.labels = unique_labels(y.iter()).into_iter().copied().collect();
@@ -138,32 +152,31 @@ impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform, L: Eq + Has
         // Ok(())
     }
     fn predict(&self, x: &Self::X) -> Self::PredictResult {
-        let prediction = self
-            .model
-            .predict(x)?
+        let raw_prediction = self.model.predict(x)?;
+        Ok(raw_prediction
             .axis_iter(Axis(0))
-            .map(|row| self.labels[argmax(row.iter().enumerate())]);
-
-        // self.model.predict(x)
+            .map(|row| self.labels[argmax(row.iter().copied().enumerate()).unwrap()])
+            .collect())
     }
     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult {
-        Err(())
+        let mut raw_prediction = self.model.predict(x)?.map(|x| Float::exp(*x));
+        raw_prediction
+            .axis_iter_mut(Axis(0))
+            .map(|mut row| {
+                let norm = row.sum();
+                row.iter_mut().for_each(|p| *p = *p / norm);
+            })
+            .for_each(drop);
+        Ok(raw_prediction)
     }
 }
 
 #[test]
 fn code() {
     use ndarray::array;
-    use std::collections::HashSet;
-    let kmers: Vec<u8> = vec![64, 64, 64, 65, 65, 65];
-    let nodes = kmers.iter().copied().count();
-    println!("{:?}", nodes);
-    // println!("{:?}", y);
-    // println!("{:?}", unique_labels(y.iter()));
-    // println!("{:?}",);
 
-    let x = array![[0., 0., 1.], [1., 0., 0.]];
-    let y = array!["sale", "propre"];
+    let x = array![[0., 0., 1.], [1., 0., 0.], [1., 0., 1.]];
+    let y = array!["sale", "propre", "deguelasse"];
     // println!("x:\n{:?}\n", x);
     // println!("xxt:\n{:?}\n", x.dot(&x.t()));
     // let coef = array![1., 2., 3.];
@@ -174,7 +187,7 @@ fn code() {
 
     let settings = RidgeClassificationSettings {
         fit_intercept: false,
-        solver: RidgeClassificationSolver::Svd,
+        solver: RidgeClassificationSolver::Sgd,
         l2_penalty: None,
         tol: Some(1e-6),
         step_size: Some(1e-3),
@@ -192,6 +205,15 @@ fn code() {
     };
 
     match model.predict(&x) {
+        Ok(value) => {
+            println!("\ny_pred:\n{:?}", value);
+        }
+        Err(error) => {
+            println!("{:?}", error);
+        }
+    };
+
+    match model.predict_proba(&x) {
         Ok(value) => {
             println!("\ny_pred:\n{:?}", value);
         }
