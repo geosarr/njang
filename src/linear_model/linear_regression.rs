@@ -574,12 +574,12 @@ macro_rules! impl_regression {
                                 .for_each(drop);
                             max_squared_sum = Float::powi(max_squared_sum, 2);
                             let fi = T::from(usize::from(fit_intercept)).unwrap();
-                            let alpha_norm =
-                                self.internal.l2_penalty.unwrap() / T::from(n_targets).unwrap();
-                            self.internal
-                                .step_size
-                                .as_mut()
-                                .map(|p| *p = T::one() / (max_squared_sum + fi + alpha_norm));
+                            let n_targets_in_t = T::from(n_targets).unwrap();
+                            let alpha_norm = self.internal.l2_penalty.unwrap() / n_targets_in_t;
+                            self.internal.step_size.as_mut().map(|p| {
+                                *p = T::one()
+                                    / ((max_squared_sum + fi + alpha_norm) * n_targets_in_t)
+                            });
                         }
                         let y_2d = $reshape_to_2d(y); // TODO: Improvement needed to avoid copy or broadcasting
                         let (n_features, rng) = (
