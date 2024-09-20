@@ -60,6 +60,7 @@ pub trait Algebra: Container {
     fn powi(&self, n: i32) -> Self::PowiOutput;
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
     fn l2_norm(&self) -> Self::Elem;
+    fn linf_norm(&self) -> Self::Elem;
     fn sign(&self) -> Self::SignOutput;
 }
 
@@ -80,6 +81,17 @@ where
     }
     fn l2_norm(&self) -> S::Elem {
         self.powi(2).sum().sqrt()
+    }
+    fn linf_norm(&self) -> S::Elem {
+        let mut norm = S::Elem::zero();
+        self.map(|x| {
+            let xabs = x.abs();
+            if xabs > norm {
+                norm = xabs
+            }
+            xabs
+        });
+        norm
     }
     fn sign(&self) -> Self::SignOutput {
         self.map(|v| {
