@@ -102,7 +102,7 @@ impl<T> LinearRegressionInternal<T> {
     }
 }
 
-/// Hyperparameters used in a regression model.
+/// Hyperparameters used in a linear regression model.
 ///
 /// **It is important to note** that the fitted model depends on how the user
 /// sets the fields `*_penalty`:
@@ -117,8 +117,8 @@ impl<T> LinearRegressionInternal<T> {
 #[derive(Debug, Clone, Copy)]
 pub struct LinearRegressionSettings<T> {
     /// If it is `true` then the model fits with an intercept, `false` without
-    /// an intercept. The matrix [coef][`Regression`] of non-intercept weights
-    /// satisfies:
+    /// an intercept. The matrix [coef][`LinearRegression`] of non-intercept
+    /// weights satisfies:
     /// - if `fit_intercept = false`, then the prediction of a sample `x` is
     ///   given by `x.dot(coef)`
     /// - if `fit_intercept = true`, then the prediction of a sample `x` is
@@ -135,14 +135,14 @@ pub struct LinearRegressionSettings<T> {
     /// ||coef||`<sub>1</sub> is added to the loss objective function. Instead
     /// of setting `l1_penalty = Some(0.)`, it may be preferable to set
     /// `l1_penalty = None` to avoid useless computations and numerical issues.
-    pub l1_penalty: Option<T>, // for Lasso Regression
+    pub l1_penalty: Option<T>,
     /// If it is `None`, then no L2-penalty is added to the loss objective
     /// function. Otherwise, if it is equal to `Some(value)`, then `0.5 *
     /// value * ||coef||`<sub>2</sub><sup>2</sup> is added to the loss objective
     /// function. Instead of setting `l2_penalty = Some(0.)`, it may be
     /// preferable to set `l2_penalty = None` to avoid useless computations
     /// and numerical issues.
-    pub l2_penalty: Option<T>, // for Ridge Regression
+    pub l2_penalty: Option<T>,
     /// Tolerance parameter.
     /// - Gradient descent solvers (like [Sgd][`LinearRegressionSolver::Sgd`],
     ///   [Bgd][`LinearRegressionSolver::Bgd`], etc) stop when the relative
@@ -167,10 +167,10 @@ impl<T> Default for LinearRegressionSettings<T> {
     /// Defaults to linear regression without penalty
     /// ```
     /// use ndarray::{Array0, Array1, Array2};
-    /// use njang::{LinearRegressionSettings, Regression};
+    /// use njang::{LinearRegression, LinearRegressionSettings};
     ///
     /// let settings = LinearRegressionSettings::default();
-    /// let model = Regression::<Array1<f32>, Array0<f32>>::new(settings);
+    /// let model = LinearRegression::<Array1<f32>, Array0<f32>>::new(settings);
     /// assert!(model.is_linear());
     /// ```
     fn default() -> Self {
@@ -210,18 +210,20 @@ pub struct LinearRegressionParameter<C, I> {
 /// sets the fields `*_penalty` in [LinearRegressionSettings]. See
 /// [LinearRegressionSettings] for more details.
 ///
-/// It is able to fit at once many regressions with the same input predictors
-/// `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate. **In this
-/// case, the same settings apply to all regressions involved**.
+/// It is able to fit at once many linear regressions with the same input
+/// predictors `X`, when `X` and `Y` are of type `Array2<T>` from ndarray crate.
+/// **In this case, the same settings apply to all regressions involved**.
 /// ```
 /// use ndarray::{array, Array1, Array2};
-/// use njang::{LinearRegressionSettings, LinearRegressionSolver, Regression, RegressionModel};
+/// use njang::{
+///     LinearRegression, LinearRegressionSettings, LinearRegressionSolver, RegressionModel,
+/// };
 /// let x = array![[0., 1.], [1., -1.], [-2., 3.]];
 /// let coef = array![[10., 30.], [20., 40.]];
 /// let intercept = 1.;
 /// let y = x.dot(&coef) + intercept;
-/// // multiple regression models with intercept.
-/// let mut model = Regression::<Array2<f32>, Array1<f32>>::new(LinearRegressionSettings {
+/// // multiple linear regression models with intercept.
+/// let mut model = LinearRegression::<Array2<f32>, Array1<f32>>::new(LinearRegressionSettings {
 ///     fit_intercept: true,
 ///     solver: LinearRegressionSolver::Exact,
 ///     ..Default::default()
