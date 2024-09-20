@@ -1,9 +1,10 @@
-use core::{hash::Hash, marker::PhantomData};
+use core::hash::Hash;
+mod unit_test;
 
-use ndarray::{Array, Array1, Array2, Axis, Ix0, Ix1, ScalarOperand};
+use ndarray::{Array1, Array2, Axis, Ix0, Ix1, ScalarOperand};
 use ndarray_linalg::Lapack;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
-use num_traits::{zero, Float};
+use num_traits::Float;
 
 use crate::{
     error::NjangError,
@@ -97,7 +98,7 @@ impl<C: Container, I, L> RidgeClassification<C, I, L> {
 fn unique_labels<L>(labels: L) -> Vec<L::Item>
 where
     L: IntoIterator,
-    L::Item: Eq + Hash + Ord + Copy,
+    L::Item: Eq + Hash + Ord,
 {
     let unique_labels = labels.into_iter().collect::<HashSet<_>>();
     let mut unique_labels = unique_labels.into_iter().collect::<Vec<_>>();
@@ -147,15 +148,13 @@ impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform, L: Eq + Has
                 row[pos] = T::one();
             })
             .for_each(drop);
-        println!("y_reg:\n{:?}", y_reg);
         self.model.fit(x, &y_reg)
-        // Ok(())
     }
     fn predict(&self, x: &Self::X) -> Self::PredictResult {
         let raw_prediction = self.model.predict(x)?;
         Ok(raw_prediction
             .axis_iter(Axis(0))
-            .map(|row| self.labels[argmax(row.iter().copied().enumerate()).unwrap()])
+            .map(|pred| self.labels[argmax(pred.iter().copied().enumerate()).unwrap()])
             .collect())
     }
     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult {
@@ -164,6 +163,8 @@ impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform, L: Eq + Has
             .axis_iter_mut(Axis(0))
             .map(|mut row| {
                 let norm = row.sum();
+                // let max = row.iter();
+                // .map(|x| Float::exp(*x))
                 row.iter_mut().for_each(|p| *p = *p / norm);
             })
             .for_each(drop);
@@ -176,18 +177,11 @@ fn code() {
     use ndarray::array;
 
     let x = array![[0., 0., 1.], [1., 0., 0.], [1., 0., 1.]];
-    let y = array!["sale", "propre", "deguelasse"];
-    // println!("x:\n{:?}\n", x);
-    // println!("xxt:\n{:?}\n", x.dot(&x.t()));
-    // let coef = array![1., 2., 3.];
-    // println!("coef:\n{:?}\n", coef);
-    // let y = x.dot(&coef);
-    // println!("y:\n{:?}\n", y);
-    // println!("xty:\n{:?}\n", x.t().dot(&y));
+    let y = array!["A", "B", "C"];
 
     let settings = RidgeClassificationSettings {
         fit_intercept: false,
-        solver: RidgeClassificationSolver::Sgd,
+        solver: RidgeClassificationSolver::Sag,
         l2_penalty: None,
         tol: Some(1e-6),
         step_size: Some(1e-3),
@@ -204,21 +198,5 @@ fn code() {
         }
     };
 
-    match model.predict(&x) {
-        Ok(value) => {
-            println!("\ny_pred:\n{:?}", value);
-        }
-        Err(error) => {
-            println!("{:?}", error);
-        }
-    };
-
-    match model.predict_proba(&x) {
-        Ok(value) => {
-            println!("\ny_pred:\n{:?}", value);
-        }
-        Err(error) => {
-            println!("{:?}", error);
-        }
-    };
+    assert_eq!(model.predict(&x).unwrap(), y);
 }

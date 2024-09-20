@@ -5,6 +5,7 @@ mod tests {
     use crate::traits::Algebra;
     use alloc::vec::Vec;
     use ndarray::{Array, Array0, Array1, Array2, Axis, Ix0, Ix1, Ix2};
+    use ndarray_linalg::Inverse;
 
     const REGRESSION_SOLVERS: [LinearRegressionSolver; 7] = [
         LinearRegressionSolver::Sgd,

@@ -1,3 +1,4 @@
+mod unit_test;
 use crate::error::NjangError;
 use crate::{
     linear_model::{
