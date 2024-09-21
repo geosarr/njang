@@ -6,7 +6,7 @@ use crate::{
         linear_regression_gradient, preprocess, qr, randu_1d, randu_2d, ridge_regression_gradient,
     },
     solver::{batch_gradient_descent, stochastic_average_gradient, stochastic_gradient_descent},
-    traits::{Algebra, Container, RegressionModel},
+    traits::{Algebra, Container, Model, RegressionModel, Scalar},
 };
 use core::convert::identity;
 use core::ops::{Add, Mul, Sub};
@@ -15,7 +15,6 @@ use ndarray::{
 };
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
 use ndarray_rand::rand::SeedableRng;
-use ndarray_rand::rand_distr::uniform::SampleUniform;
 use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
 
@@ -147,8 +146,7 @@ pub struct LinearRegressionSettings<T> {
     /// - Gradient descent solvers (like [Sgd][`LinearRegressionSolver::Sgd`],
     ///   [Bgd][`LinearRegressionSolver::Bgd`], etc) stop when the relative
     ///   variation of consecutive iterates is lower than **tol**, that is:
-    ///     - `||coef_next - coef_curr||`<sub>2</sub> `<= tol *
-    ///       ||coef_curr||`<sub>2</sub>
+    ///     - `||coef_next - coef_current|| <= tol * ||coef_current||`
     /// - No impact on the other algorithms:
     ///     - [Exact][`LinearRegressionSolver::Exact`]
     ///     - [Svd][`LinearRegressionSolver::Svd`]
@@ -351,13 +349,10 @@ impl<C: Container, I> LinearRegression<C, I> {
         C::Elem: Float + FromPrimitive,
     {
         if self.is_lasso() {
-            // L2-penalty
             self.scale_l1_penalty();
         } else if self.is_ridge() {
-            // L1-penalty
             self.scale_l2_penalty();
         } else if self.is_elastic_net() {
-            // L1 and L2 penalties
             self.scale_l1_penalty();
             self.scale_l2_penalty();
         }
@@ -434,9 +429,7 @@ impl_scale_penalty!(scale_l2_penalty, l2_penalty);
 
 macro_rules! impl_regression {
     ($ix:ty, $ix_smaller:ty, $randu:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {
-        impl<T: Lapack + PartialOrd + Float + ScalarOperand + SampleUniform + core::fmt::Debug>
-            LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
-        {
+        impl<T: Scalar> LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>> {
             fn linalg_solve<S>(
                 &mut self,
                 x: &Array2<T>,
@@ -524,7 +517,7 @@ macro_rules! impl_regression {
                     LinearRegressionSolver::Cholesky => self.linalg_solve(x, y, cholesky),
                     LinearRegressionSolver::Sgd => {
                         self.set_internal(x, y);
-                        // Rescale step_size and penalty(ies) to scale gradients correctly
+                        // Rescale step_size and penalty(ies) to scale (sub)gradients correctly
                         self.scale_step_size();
                         self.scale_penalty();
                         let (n_targets, n_features, rng) = (
@@ -564,8 +557,8 @@ macro_rules! impl_regression {
                         self.scale_penalty();
                         let n_targets = self.internal.n_targets;
                         if self.is_ridge() | self.is_elastic_net() {
-                            // Schmidt, M., Roux, N. L., & Bach, F. (2013)
-                            // Reset the step size.
+                            // This scope resets the step size following the paper Schmidt, M.,
+                            // Roux, N. L., & Bach, F. (2013)
                             let mut max_squared_sum = T::zero();
                             x.axis_iter(Axis(0))
                                 .map(|r| {
@@ -578,13 +571,20 @@ macro_rules! impl_regression {
                             max_squared_sum = Float::powi(max_squared_sum, 2);
                             let fi = T::from(usize::from(fit_intercept)).unwrap();
                             let n_targets_in_t = T::from(n_targets).unwrap();
+                            // At this stage the Ridge penalty is l2_penalty * n_targets / n_samples
+                            // due to the call of self.scale_penalty(). So to get the normalized
+                            // penalty l2_penalty / n_samples divide by n_targets.
                             let alpha_norm = self.internal.l2_penalty.unwrap() / n_targets_in_t;
+                            // The step size should be scaled by 1 / n_targets due to scale
+                            // correctly the (sub)gradient.
                             self.internal.step_size.as_mut().map(|p| {
                                 *p = T::one()
                                     / ((max_squared_sum + fi + alpha_norm) * n_targets_in_t)
                             });
                         }
-                        let y_2d = $reshape_to_2d(y); // TODO: Improvement needed to avoid copy or broadcasting
+                        // TODO: Improvement needed in reshape_to_2d to avoid copy or broadcasting
+                        // Do we really need to reshape to a 2d container ?
+                        let y_2d = $reshape_to_2d(y);
                         let (n_features, rng) = (
                             self.internal.n_features,
                             self.internal.rng.as_mut().unwrap(),
@@ -608,17 +608,14 @@ macro_rules! impl_regression {
             }
         }
 
-        impl<T: Lapack + ScalarOperand + PartialOrd + Float + SampleUniform> RegressionModel
-            for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
-        {
+        impl<'a, T: Scalar> Model<'a> for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>> {
             type FitResult = Result<(), NjangError>;
-            type X = Array2<T>;
-            type Y = Array<T, $ix>;
-            type PredictResult = Result<Array<T, $ix>, ()>;
-            fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
+            type Data = (&'a Array2<T>, &'a Array<T, $ix>);
+            fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
+                let (x, y) = data;
                 let fit_intercept = self.settings.fit_intercept;
                 if fit_intercept {
-                    let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
+                    let (x_centered, x_mean, y_centered, y_mean) = preprocess(*x, *y);
                     let coef = match self.solve(&x_centered, &y_centered, fit_intercept) {
                         Err(error) => return Err(error),
                         Ok(value) => value,
@@ -632,6 +629,17 @@ macro_rules! impl_regression {
                     });
                 }
                 Ok(())
+            }
+        }
+        impl<'a, T: Scalar> RegressionModel
+            for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
+        {
+            type X = Array2<T>;
+            type Y = Array<T, $ix>;
+            type PredictResult = Result<Array<T, $ix>, ()>;
+            fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as Model<'_>>::FitResult {
+                let data = (x, y);
+                <Self as Model>::fit(self, &data)
             }
             fn predict(&self, x: &Self::X) -> Self::PredictResult {
                 if self.settings.fit_intercept {
