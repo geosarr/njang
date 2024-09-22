@@ -1,6 +1,6 @@
 use ndarray::{array, Array2};
 
-use crate::linear_model::linear_classification::{
+use crate::linear_model::classification::{
     RidgeClassification, RidgeClassificationSettings, RidgeClassificationSolver,
 };
 use crate::ClassificationModel;

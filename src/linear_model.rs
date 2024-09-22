@@ -1,11 +1,10 @@
+mod classification;
 mod gradient;
-mod linear_classification;
-mod linear_regression;
+mod regression;
 extern crate alloc;
 use crate::traits::Algebra;
 use core::ops::Sub;
 use gradient::*;
-pub use linear_regression::*;
 use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix1, Ix2};
 use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
 use ndarray_rand::{
@@ -15,6 +14,7 @@ use ndarray_rand::{
 };
 use num_traits::Float;
 use rand_chacha::ChaCha20Rng;
+pub use regression::*;
 
 /// Used to preprocess data for linear models
 pub(crate) fn preprocess<X, Y, MX, MY>(x: &X, y: &Y) -> (X, MX, Y, MY)
