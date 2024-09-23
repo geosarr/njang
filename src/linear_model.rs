@@ -42,6 +42,14 @@ where
     return x.t().dot(&(x.dot(coef) - y));
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LinearModelParameter<C, I> {
+    /// Non-intercept weight(s).
+    pub coef: Option<C>,
+    /// Intercept weight(s) of the model.
+    pub intercept: Option<I>,
+}
+
 pub(crate) trait LinearModelInternal {
     type Scalar;
     fn max_iter(&self) -> Option<usize> {

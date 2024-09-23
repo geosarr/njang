@@ -18,7 +18,7 @@ use ndarray_rand::rand::SeedableRng;
 use num_traits::{Float, FromPrimitive};
 use rand_chacha::ChaCha20Rng;
 
-use super::LinearModelInternal;
+use super::{LinearModelInternal, LinearModelParameter};
 
 const DEFAULT_L1: f32 = 1.;
 const DEFAULT_L2: f32 = 1.;
@@ -185,14 +185,6 @@ impl<T> Default for LinearRegressionSettings<T> {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct LinearRegressionParameter<C, I> {
-    /// Non-intercept weight(s).
-    pub coef: Option<C>,
-    /// Intercept weight(s) of the model.
-    pub intercept: Option<I>,
-}
-
 /// Ordinary Least Squares (OLS) eventually penalized (Lasso with L1-penalty,
 /// Ridge with L2-penalty and Elastic Net with L1 and L2 penalties).
 ///
@@ -246,7 +238,7 @@ pub struct LinearRegression<C, I>
 where
     C: Container,
 {
-    pub parameter: LinearRegressionParameter<C, I>,
+    pub parameter: LinearModelParameter<C, I>,
     pub settings: LinearRegressionSettings<C::Elem>,
     internal: LinearRegressionInternal<C::Elem>,
 }
@@ -257,7 +249,7 @@ impl<C: Container, I> LinearRegression<C, I> {
         C::Elem: Float,
     {
         Self {
-            parameter: LinearRegressionParameter {
+            parameter: LinearModelParameter {
                 coef: None,
                 intercept: None,
             },
