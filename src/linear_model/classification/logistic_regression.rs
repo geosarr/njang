@@ -33,35 +33,6 @@ pub struct LogisticRegressionParameter<C, I> {
     pub intercept: Option<I>,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct LogisticRegressionInternal<T> {
-    pub n_samples: usize,
-    pub n_features: usize,
-    pub n_targets: usize,
-    pub l1_penalty: Option<T>,
-    pub l2_penalty: Option<T>,
-    pub tol: Option<T>,
-    pub step_size: Option<T>,
-    pub rng: Option<ChaCha20Rng>,
-    pub max_iter: Option<usize>,
-}
-
-impl<T> LogisticRegressionInternal<T> {
-    pub fn new() -> Self {
-        Self {
-            n_samples: 0,
-            n_features: 0,
-            n_targets: 0,
-            l1_penalty: None,
-            l2_penalty: None,
-            tol: None,
-            step_size: None,
-            rng: None,
-            max_iter: None,
-        }
-    }
-}
-
 /// Hyperparameters used in a linear classification model.
 #[derive(Debug, Clone, Copy)]
 pub struct LogisticRegressionSettings<T> {

@@ -5,13 +5,9 @@ mod unit_test;
 pub use logistic_regression::*;
 use ndarray::{Array1, Array2, Axis};
 use num_traits::Float;
-use rand_chacha::ChaCha20Rng;
 
-use super::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver};
-use crate::{
-    error::NjangError,
-    traits::{ClassificationModel, Container, Model, RegressionModel, Scalar},
-};
+use super::{LinearRegressionSettings, LinearRegressionSolver};
+use crate::traits::{ClassificationModel, Container, Model, RegressionModel, Scalar};
 pub use ridge_classification::{
     RidgeClassification, RidgeClassificationSettings, RidgeClassificationSolver,
 };

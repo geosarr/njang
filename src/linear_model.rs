@@ -186,7 +186,7 @@ pub(crate) fn randu_2d<T: Float + SampleUniform, R: Rng>(
     Array::<T, Ix2>::random_using((m[0], m[1]), Uniform::new_inclusive(-high, high), rng)
 }
 
-macro_rules! impl_linear_model {
+macro_rules! impl_partial_linear_model {
     ($model:ident, $settings:ident, $internal:ident, $linear_grad:ident, $lasso_grad:ident, $ridge_grad:ident, $elastic_grad:ident) => {
         impl<C: Container, I> $model<C, I> {
             pub fn new(settings: $settings<C::Elem>) -> Self
@@ -356,29 +356,32 @@ macro_rules! impl_settings_to_internal {
     };
 }
 
-// Linear Regression impls
-impl_scale_penalty!(LinearRegression, scale_l1_penalty, l1_penalty);
-impl_scale_penalty!(LinearRegression, scale_l2_penalty, l2_penalty);
-impl_settings_to_internal!(
-    LinearRegression,
-    set_l1_penalty_to_internal,
-    l1_penalty,
-    DEFAULT_L1
-);
-impl_settings_to_internal!(
-    LinearRegression,
-    set_l2_penalty_to_internal,
-    l2_penalty,
-    DEFAULT_L2
-);
-impl_settings_to_internal!(LinearRegression, set_tol_to_internal, tol, DEFAULT_TOL);
-impl_settings_to_internal!(
-    LinearRegression,
-    set_step_size_to_internal,
-    step_size,
-    DEFAULT_STEP_SIZE
-);
-impl_linear_model!(
+macro_rules! impl_all_linear_model {
+    ($model:ident, $settings:ident, $internal:ident, $linear_grad:ident, $lasso_grad:ident, $ridge_grad:ident, $elastic_grad:ident) => {
+        impl_scale_penalty!($model, scale_l1_penalty, l1_penalty);
+        impl_scale_penalty!($model, scale_l2_penalty, l2_penalty);
+        impl_settings_to_internal!($model, set_l1_penalty_to_internal, l1_penalty, DEFAULT_L1);
+        impl_settings_to_internal!($model, set_l2_penalty_to_internal, l2_penalty, DEFAULT_L2);
+        impl_settings_to_internal!($model, set_tol_to_internal, tol, DEFAULT_TOL);
+        impl_settings_to_internal!(
+            $model,
+            set_step_size_to_internal,
+            step_size,
+            DEFAULT_STEP_SIZE
+        );
+        impl_partial_linear_model!(
+            $model,
+            $settings,
+            ModelInternal,
+            $linear_grad,
+            $lasso_grad,
+            $ridge_grad,
+            $elastic_grad
+        );
+    };
+}
+
+impl_all_linear_model!(
     LinearRegression,
     LinearRegressionSettings,
     ModelInternal,
@@ -387,30 +390,7 @@ impl_linear_model!(
     ridge_regression_gradient,
     elastic_net_regression_gradient
 );
-
-// // Logistic Regression impls
-impl_scale_penalty!(LogisticRegression, scale_l1_penalty, l1_penalty);
-impl_scale_penalty!(LogisticRegression, scale_l2_penalty, l2_penalty);
-impl_settings_to_internal!(
-    LogisticRegression,
-    set_l1_penalty_to_internal,
-    l1_penalty,
-    DEFAULT_L1
-);
-impl_settings_to_internal!(
-    LogisticRegression,
-    set_l2_penalty_to_internal,
-    l2_penalty,
-    DEFAULT_L2
-);
-impl_settings_to_internal!(LogisticRegression, set_tol_to_internal, tol, DEFAULT_TOL);
-impl_settings_to_internal!(
-    LogisticRegression,
-    set_step_size_to_internal,
-    step_size,
-    DEFAULT_STEP_SIZE
-);
-impl_linear_model!(
+impl_all_linear_model!(
     LogisticRegression,
     LogisticRegressionSettings,
     ModelInternal,
