@@ -2,7 +2,7 @@ use core::hash::Hash;
 mod logistic_regression;
 mod ridge_classification;
 mod unit_test;
-use logistic_regression::*;
+pub use logistic_regression::*;
 use ndarray::{Array1, Array2, Axis};
 use num_traits::Float;
 use rand_chacha::ChaCha20Rng;

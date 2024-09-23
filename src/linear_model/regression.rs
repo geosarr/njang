@@ -1,31 +1,17 @@
 mod unit_test;
 use crate::error::NjangError;
 use crate::{
-    linear_model::{
-        cholesky, elastic_net_regression_gradient, exact, lasso_regression_gradient,
-        linear_regression_gradient, preprocess, qr, randu_1d, randu_2d, ridge_regression_gradient,
-    },
+    linear_model::{cholesky, exact, preprocess, qr, randu_1d, randu_2d},
     solver::{batch_gradient_descent, stochastic_average_gradient, stochastic_gradient_descent},
     traits::{Algebra, Container, Model, RegressionModel, Scalar},
 };
 use core::convert::identity;
-use core::ops::{Add, Mul, Sub};
-use ndarray::{
-    linalg::Dot, s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2, ScalarOperand,
-};
+use core::ops::Add;
+use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2, ScalarOperand};
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
-use ndarray_rand::rand::SeedableRng;
-use num_traits::{Float, FromPrimitive};
-use rand_chacha::ChaCha20Rng;
+use num_traits::Float;
 
-use super::{LinearModelInternal, LinearModelParameter};
-
-const DEFAULT_L1: f32 = 1.;
-const DEFAULT_L2: f32 = 1.;
-const DEFAULT_TOL: f32 = 1e-3;
-const DEFAULT_STEP_SIZE: f32 = 1e-3;
-const DEFAULT_STATE: u32 = 0;
-const DEFAULT_MAX_ITER: usize = 1000;
+use super::{LinearModelInternal, LinearModelParameter, ModelInternal};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum LinearRegressionSolver {
@@ -69,36 +55,6 @@ pub enum LinearRegressionSolver {
     /// The user should standardize the input predictors, otherwise the
     /// algorithm may not converge.
     Sag,
-}
-
-/// This is responsible for processing settings, setting default values
-#[derive(Debug, Clone)]
-pub(crate) struct LinearRegressionInternal<T> {
-    pub n_samples: usize,
-    pub n_features: usize,
-    pub n_targets: usize,
-    pub l1_penalty: Option<T>,
-    pub l2_penalty: Option<T>,
-    pub tol: Option<T>,
-    pub step_size: Option<T>,
-    pub rng: Option<ChaCha20Rng>,
-    pub max_iter: Option<usize>,
-}
-
-impl<T> LinearRegressionInternal<T> {
-    pub fn new() -> Self {
-        Self {
-            n_samples: 0,
-            n_features: 0,
-            n_targets: 0,
-            l1_penalty: None,
-            l2_penalty: None,
-            tol: None,
-            step_size: None,
-            rng: None,
-            max_iter: None,
-        }
-    }
 }
 
 /// Hyperparameters used in a linear regression model.
@@ -240,184 +196,8 @@ where
 {
     pub parameter: LinearModelParameter<C, I>,
     pub settings: LinearRegressionSettings<C::Elem>,
-    internal: LinearRegressionInternal<C::Elem>,
+    pub(crate) internal: ModelInternal<C::Elem>,
 }
-
-impl<C: Container, I> LinearRegression<C, I> {
-    pub fn new(settings: LinearRegressionSettings<C::Elem>) -> Self
-    where
-        C::Elem: Float,
-    {
-        Self {
-            parameter: LinearModelParameter {
-                coef: None,
-                intercept: None,
-            },
-            settings,
-            internal: LinearRegressionInternal::new(),
-        }
-    }
-    /// Coefficients of the model
-    pub fn coef(&self) -> Option<&C> {
-        self.parameter.coef.as_ref()
-    }
-    /// Intercept of the model
-    pub fn intercept(&self) -> Option<&I> {
-        self.parameter.intercept.as_ref()
-    }
-    /// Whether or not the model is an Elastic Net regression.
-    pub fn is_elastic_net(&self) -> bool {
-        self.settings.l1_penalty.is_some() && self.settings.l2_penalty.is_some()
-    }
-    /// Whether or not the model is a Ridge regression.
-    pub fn is_ridge(&self) -> bool {
-        self.settings.l1_penalty.is_none() && self.settings.l2_penalty.is_some()
-    }
-    /// Whether or not the model is a Lasso regression.
-    pub fn is_lasso(&self) -> bool {
-        self.settings.l1_penalty.is_some() && self.settings.l2_penalty.is_none()
-    }
-    /// Whether or not the model is a Linear regression (without any penalty).
-    pub fn is_linear(&self) -> bool {
-        self.settings.l1_penalty.is_none() && self.settings.l2_penalty.is_none()
-    }
-    /// Sets information on the input samples to the internal settings. Argument
-    /// `x` should be a 2 dimensional container, and `<X as
-    /// Container>::dimension(x)` should return something like [nrows, ncols] of
-    /// x.
-    fn set_sample_to_internal<X: Container>(&mut self, x: &X, y: &C) {
-        let dim = x.dimension();
-        let (n_samples, n_features) = (dim[0], dim[1]);
-        self.internal.n_features = n_features;
-        self.internal.n_samples = n_samples;
-        let shape = y.dimension();
-        let n_targets = if shape.len() == 2 { shape[1] } else { 1 };
-        self.internal.n_targets = n_targets;
-    }
-    fn set_rng_to_internal(&mut self) {
-        let random_state = self.settings.random_state.unwrap_or(DEFAULT_STATE);
-        self.internal.rng = Some(ChaCha20Rng::seed_from_u64(random_state as u64));
-    }
-    fn set_max_iter_to_internal(&mut self) {
-        self.internal.max_iter = Some(self.settings.max_iter.unwrap_or(DEFAULT_MAX_ITER));
-    }
-    fn set_penalty_to_internal(&mut self)
-    where
-        C::Elem: Copy + FromPrimitive + core::fmt::Debug,
-    {
-        // Use here a match pattern with enum instead of if else's ?
-        if self.is_lasso() {
-            self.set_l1_penalty_to_internal();
-        } else if self.is_ridge() {
-            self.set_l2_penalty_to_internal();
-        } else if self.is_elastic_net() {
-            self.set_l1_penalty_to_internal();
-            self.set_l2_penalty_to_internal();
-        }
-    }
-    fn set_internal<X: Container>(&mut self, x: &X, y: &C)
-    where
-        C::Elem: Float + FromPrimitive + core::fmt::Debug,
-    {
-        self.set_sample_to_internal(x, y);
-        self.set_rng_to_internal();
-        self.set_max_iter_to_internal();
-        self.set_tol_to_internal();
-        self.set_step_size_to_internal();
-        self.set_penalty_to_internal();
-    }
-    fn scale_step_size(&mut self)
-    where
-        C::Elem: Float + FromPrimitive,
-    {
-        let n_targets = C::Elem::from_usize(self.internal.n_targets).unwrap();
-        self.internal
-            .step_size
-            .as_mut()
-            .map(|s| *s = *s / n_targets);
-    }
-    fn scale_penalty(&mut self)
-    where
-        C::Elem: Float + FromPrimitive,
-    {
-        if self.is_lasso() {
-            self.scale_l1_penalty();
-        } else if self.is_ridge() {
-            self.scale_l2_penalty();
-        } else if self.is_elastic_net() {
-            self.scale_l1_penalty();
-            self.scale_l2_penalty();
-        }
-    }
-    fn gradient_function<T, Y>(
-        &self,
-    ) -> impl Fn(&Array2<T>, &Y, &Y, &LinearRegressionInternal<T>) -> Y
-    where
-        T: Lapack,
-        for<'a> Y: Sub<&'a Y, Output = Y>
-            + Add<Y, Output = Y>
-            + Mul<T, Output = Y>
-            + Algebra<Elem = T, SignOutput = Y>,
-        for<'a> &'a Y: Mul<T, Output = Y>,
-        Array2<T>: Dot<Y, Output = Y>,
-        for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
-    {
-        // Use here a match pattern with enum instead of if else's ?
-        if self.is_linear() {
-            linear_regression_gradient
-        } else if self.is_ridge() {
-            ridge_regression_gradient
-        } else if self.is_lasso() {
-            lasso_regression_gradient
-        } else {
-            elastic_net_regression_gradient
-        }
-    }
-}
-
-macro_rules! impl_settings_to_internal {
-    ($setter_name:ident, $field_name:ident, $default:ident) => {
-        impl<C: Container, I> LinearRegression<C, I>
-        where
-            C::Elem: Copy + FromPrimitive + core::fmt::Debug,
-        {
-            fn $setter_name(&mut self) {
-                self.internal.$field_name = Some(
-                    self.settings
-                        .$field_name
-                        .unwrap_or(C::Elem::from_f32($default).unwrap()),
-                );
-            }
-        }
-    };
-}
-impl_settings_to_internal!(set_l1_penalty_to_internal, l1_penalty, DEFAULT_L1);
-impl_settings_to_internal!(set_l2_penalty_to_internal, l2_penalty, DEFAULT_L2);
-impl_settings_to_internal!(set_tol_to_internal, tol, DEFAULT_TOL);
-impl_settings_to_internal!(set_step_size_to_internal, step_size, DEFAULT_STEP_SIZE);
-
-macro_rules! impl_scale_penalty {
-    ($scaler_name:ident, $field:ident) => {
-        impl<C: Container, I> LinearRegression<C, I>
-        where
-            C::Elem: Float + FromPrimitive,
-        {
-            fn $scaler_name(&mut self)
-            where
-                C::Elem: Float + FromPrimitive,
-            {
-                let n_targets = C::Elem::from_usize(self.internal.n_targets).unwrap();
-                let n_samples = C::Elem::from_usize(self.internal.n_samples).unwrap();
-                self.internal
-                    .$field
-                    .as_mut()
-                    .map(|p| *p = *p * n_targets / n_samples);
-            }
-        }
-    };
-}
-impl_scale_penalty!(scale_l1_penalty, l1_penalty);
-impl_scale_penalty!(scale_l2_penalty, l2_penalty);
 
 macro_rules! impl_regression {
     ($ix:ty, $ix_smaller:ty, $randu:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {

@@ -1,6 +1,7 @@
 use rand_chacha::ChaCha20Rng;
 
 use crate::{linear_model::LinearModelParameter, traits::Container};
+use core::ops::Sub;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum LogisticRegressionSolver {
@@ -21,6 +22,8 @@ pub enum LogisticRegressionSolver {
     // /// algorithm may not converge.
     // Sag,
 }
+
+use crate::linear_model::ModelInternal;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LogisticRegressionParameter<C, I> {
@@ -101,18 +104,5 @@ where
 {
     pub parameter: LinearModelParameter<C, I>,
     pub settings: LogisticRegressionSettings<C::Elem>,
-    internal: LogisticRegressionInternal<C::Elem>,
-}
-
-impl<C: Container, I> LogisticRegression<C, I> {
-    pub fn new(settings: LogisticRegressionSettings<C::Elem>) -> Self {
-        Self {
-            parameter: LinearModelParameter {
-                coef: None,
-                intercept: None,
-            },
-            settings,
-            internal: LogisticRegressionInternal::new(),
-        }
-    }
+    pub(crate) internal: ModelInternal<C::Elem>,
 }
