@@ -72,22 +72,25 @@ pub trait Algebra: Container {
     type MeanAxisOutput;
     type PowiOutput;
     type SignOutput;
+    type SoftmaxOutput;
     fn powi(&self, n: i32) -> Self::PowiOutput;
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
     fn l2_norm(&self) -> Self::Elem;
     fn linf_norm(&self) -> Self::Elem;
     fn sign(&self) -> Self::SignOutput;
+    fn softmax(&self, max: Option<Self::Elem>) -> Self::SoftmaxOutput;
 }
 
 impl<S, D> Algebra for ArrayBase<S, D>
 where
     S: Data,
-    S::Elem: Float + Zero + FromPrimitive,
+    S::Elem: Float + Zero + FromPrimitive + ScalarOperand,
     D: Dimension + RemoveAxis,
 {
     type MeanAxisOutput = Array<S::Elem, D::Smaller>;
     type PowiOutput = Array<S::Elem, D>;
     type SignOutput = Array<S::Elem, D>;
+    type SoftmaxOutput = Array<S::Elem, D>;
     fn powi(&self, n: i32) -> Self::PowiOutput {
         self.map(|v| v.powi(n))
     }
@@ -110,11 +113,20 @@ where
     }
     fn sign(&self) -> Self::SignOutput {
         self.map(|v| {
-            if v.abs() > S::Elem::epsilon() {
+            if v.abs() <= S::Elem::epsilon() {
                 S::Elem::zero()
             } else {
                 v.signum()
             }
         })
+    }
+    fn softmax(&self, max: Option<Self::Elem>) -> Self::SoftmaxOutput {
+        let exponentials = if let Some(m) = max {
+            self.map(|x| (*x - m).exp())
+        } else {
+            self.map(|x| (*x).exp())
+        };
+        let denom = exponentials.sum();
+        exponentials / denom
     }
 }

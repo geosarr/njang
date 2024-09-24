@@ -51,6 +51,15 @@ where
     return x.t().dot(&(x.dot(coef) - y));
 }
 
+pub(crate) fn cross_entropy_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
+where
+    for<'a> Y: Sub<&'a Y, Output = Y> + Algebra<SoftmaxOutput = Y>,
+    Array2<T>: Dot<Y, Output = Y>,
+    for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
+{
+    return x.t().dot(&(x.dot(&coef).softmax(None) - y));
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LinearModelParameter<C, I> {
     /// Non-intercept weight(s).

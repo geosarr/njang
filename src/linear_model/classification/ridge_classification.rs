@@ -121,7 +121,7 @@ fn code() {
         max_iter: Some(100000),
     };
     let mut model = RidgeClassification::<Array2<_>, _, _>::new(settings);
-    match Model::fit(&mut model, &(&x, &y)) {
+    match ClassificationModel::fit(&mut model, &x, &y) {
         Ok(_) => {
             println!("{:?}", model.coef());
         }
