@@ -51,13 +51,13 @@ where
     return x.t().dot(&(x.dot(coef) - y));
 }
 
-pub(crate) fn cross_entropy_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
+pub(crate) fn cross_entropy_loss_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
 where
     for<'a> Y: Sub<&'a Y, Output = Y> + Algebra<SoftmaxOutput = Y>,
     Array2<T>: Dot<Y, Output = Y>,
     for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
 {
-    return x.t().dot(&(x.dot(&coef).softmax(None) - y));
+    return x.t().dot(&(x.dot(&coef).softmax(None, 0) - y));
 }
 
 #[derive(Debug, Default, Clone, Copy)]

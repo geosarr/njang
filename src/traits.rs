@@ -78,7 +78,7 @@ pub trait Algebra: Container {
     fn l2_norm(&self) -> Self::Elem;
     fn linf_norm(&self) -> Self::Elem;
     fn sign(&self) -> Self::SignOutput;
-    fn softmax(&self, max: Option<Self::Elem>) -> Self::SoftmaxOutput;
+    fn softmax(&self, max: Option<Self::Elem>, axis: usize) -> Self::SoftmaxOutput;
 }
 
 impl<S, D> Algebra for ArrayBase<S, D>
@@ -120,13 +120,22 @@ where
             }
         })
     }
-    fn softmax(&self, max: Option<Self::Elem>) -> Self::SoftmaxOutput {
+    fn softmax(&self, max: Option<Self::Elem>, axis: usize) -> Self::SoftmaxOutput {
         let exponentials = if let Some(m) = max {
             self.map(|x| (*x - m).exp())
         } else {
             self.map(|x| (*x).exp())
         };
-        let denom = exponentials.sum();
+        let denom = exponentials.sum_axis(Axis(axis));
         exponentials / denom
     }
+}
+
+#[test]
+fn traits(){
+    let a = ndarray::array![1., 2., 3.];
+    let sum = a.sum_axis(Axis(0));
+    println!("a:\n{:?}", a);
+    println!("sum:\n{:?}", sum);
+    println!("norm:\n{:?}", &a/sum);
 }
