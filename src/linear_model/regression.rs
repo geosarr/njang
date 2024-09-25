@@ -199,6 +199,21 @@ where
     pub(crate) internal: ModelInternal<C::Elem>,
 }
 
+impl<C: Container, I> LinearRegression<C, I> {
+    pub fn new(settings: LinearRegressionSettings<C::Elem>) -> Self
+    where
+        C::Elem: Float,
+    {
+        Self {
+            parameter: LinearModelParameter {
+                coef: None,
+                intercept: None,
+            },
+            settings,
+            internal: ModelInternal::new(),
+        }
+    }
+}
 macro_rules! impl_regression {
     ($ix:ty, $ix_smaller:ty, $randu:ident, $reshape_to_normal:ident, $reshape_to_2d:ident) => {
         impl<T: Scalar> LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>> {

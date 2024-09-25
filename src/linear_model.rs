@@ -198,19 +198,6 @@ pub(crate) fn randu_2d<T: Float + SampleUniform, R: Rng>(
 macro_rules! impl_partial_linear_model {
     ($model:ident, $settings:ident, $internal:ident, $linear_grad:ident, $lasso_grad:ident, $ridge_grad:ident, $elastic_grad:ident) => {
         impl<C: Container, I> $model<C, I> {
-            pub fn new(settings: $settings<C::Elem>) -> Self
-            where
-                C::Elem: Float,
-            {
-                Self {
-                    parameter: LinearModelParameter {
-                        coef: None,
-                        intercept: None,
-                    },
-                    settings,
-                    internal: $internal::new(),
-                }
-            }
             /// Coefficients of the model
             pub fn coef(&self) -> Option<&C> {
                 self.parameter.coef.as_ref()
@@ -309,7 +296,7 @@ macro_rules! impl_partial_linear_model {
                 for<'a> Y: Sub<&'a Y, Output = Y>
                     + Add<Y, Output = Y>
                     + Mul<T, Output = Y>
-                    + Algebra<Elem = T, SignOutput = Y>,
+                    + Algebra<Elem = T, SignOutput = Y, SoftmaxOutput = Y>,
                 for<'a> &'a Y: Mul<T, Output = Y>,
                 Array2<T>: Dot<Y, Output = Y>,
                 for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
@@ -403,8 +390,8 @@ impl_all_linear_model!(
     LogisticRegression,
     LogisticRegressionSettings,
     ModelInternal,
-    linear_regression_gradient,
-    lasso_regression_gradient,
-    ridge_regression_gradient,
-    elastic_net_regression_gradient
+    logistic_regression_gradient,
+    logistic_lasso_regression_gradient,
+    logistic_ridge_regression_gradient,
+    logistic_elastic_net_regression_gradient
 );
