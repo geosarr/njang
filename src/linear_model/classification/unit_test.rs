@@ -1,9 +1,7 @@
 use ndarray::{array, Array2};
 
-use crate::linear_model::classification::{
-    RidgeClassification, RidgeClassificationSettings, RidgeClassificationSolver,
-};
-use crate::ClassificationModel;
+use crate::linear_model::classification::{RidgeClassification, RidgeClassificationSettings};
+use crate::{ClassificationModel, LinearModelSolver};
 
 #[test]
 fn test_ridge_classifier() {
@@ -12,7 +10,7 @@ fn test_ridge_classifier() {
 
     let settings = RidgeClassificationSettings {
         fit_intercept: false,
-        solver: RidgeClassificationSolver::Sag,
+        solver: LinearModelSolver::Sag,
         l2_penalty: None,
         tol: Some(1e-6),
         step_size: Some(1e-3),

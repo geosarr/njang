@@ -41,6 +41,50 @@ where
 }
 
 #[derive(Debug, Default, Clone, Copy)]
+pub enum LinearModelSolver {
+    /// Uses Singular Value Decomposition
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
+    Svd,
+    /// Computes the exact solution
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
+    Exact,
+    /// Uses QR decomposition to solve the problem.
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
+    Qr,
+    /// Uses Cholesky decomposition
+    ///
+    /// **This solver is available only for Linear regression and Ridge
+    /// regression**.
+    Cholesky,
+    /// Uses Stochastic Gradient Descent
+    ///
+    /// The user should standardize the input predictors, otherwise the
+    /// algorithm may not converge.
+    ///
+    /// **This solver supports all models.**
+    #[default]
+    Sgd,
+    /// Uses Batch Gradient Descent
+    ///
+    /// The user should standardize the input predictors, otherwise the
+    /// algorithm may not converge.
+    ///
+    /// **This solver supports all models.**
+    Bgd,
+    /// Uses Stochastic Average Gradient
+    ///
+    /// The user should standardize the input predictors, otherwise the
+    /// algorithm may not converge.
+    Sag,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
 pub struct LinearModelParameter<C, I> {
     /// Non-intercept weight(s).
     pub coef: Option<C>,

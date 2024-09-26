@@ -7,7 +7,7 @@ extern crate test;
 
 use ndarray::{Array1, Array2};
 use ndarray_rand::{rand::SeedableRng, rand_distr::StandardNormal, RandomExt};
-use njang::{LinearRegression, LinearRegressionSettings, LinearRegressionSolver, RegressionModel};
+use njang::{LinearModelSolver, LinearRegression, LinearRegressionSettings, RegressionModel};
 use rand_chacha::ChaCha20Rng;
 use test::Bencher;
 
@@ -21,42 +21,46 @@ fn dataset() -> (Array2<f32>, Array1<f32>) {
     (x, y)
 }
 
-// #[bench]
-// fn fit_ridge_reg_exact_bench(bench: &mut Bencher) {
-//     let (x, y) = dataset();
-//     let mut ridge_reg = RidgeRegression::<Array1<_>,
-// _>::new(RidgeLinearRegressionSettings {         fit_intercept: false,
-//         solver: RidgeLinearRegressionSolver::EXACT,
-//         ..Default::default()
-//     });
-//     bench.iter(|| {
-//         let _solution = ridge_reg.fit(&x, &y);
-//     });
-// }
+#[bench]
+fn fit_ridge_reg_exact_bench(bench: &mut Bencher) {
+    let (x, y) = dataset();
+    let mut ridge_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
+        fit_intercept: false,
+        solver: LinearModelSolver::Exact,
+        l2_penalty: Some(1.),
+        ..Default::default()
+    });
+    bench.iter(|| {
+        let _solution = ridge_reg.fit(&x, &y);
+    });
+}
 
-// #[bench]
-// fn fit_ridge_reg_sgd_bench(bench: &mut Bencher) {
-//     let (x, y) = dataset();
-//     let mut ridge_reg = RidgeRegression::<Array1<_>,
-// _>::new(RidgeLinearRegressionSettings {         fit_intercept: false,
-//         solver: RidgeLinearRegressionSolver::SGD,
-//         max_iter: Some(10000),
-//         ..Default::default()
-//     });
-//     bench.iter(|| {
-//         let _solution = ridge_reg.fit(&x, &y);
-//     });
-// }
+#[bench]
+fn fit_ridge_reg_sgd_bench(bench: &mut Bencher) {
+    let (x, y) = dataset();
+    let mut ridge_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
+        fit_intercept: false,
+        solver: LinearModelSolver::Sgd,
+        l2_penalty: Some(1.),
+        max_iter: Some(100000),
+        tol: Some(1e-6),
+        ..Default::default()
+    });
+    bench.iter(|| {
+        let _solution = ridge_reg.fit(&x, &y);
+    });
+}
 
-// #[bench]
-// fn fit_ridge_reg_qr_bench(bench: &mut Bencher) {
-//     let (x, y) = dataset();
-//     let mut ridge_reg = RidgeRegression::<Array1<_>,
-// _>::new(RidgeLinearRegressionSettings {         fit_intercept: false,
-//         solver: RidgeLinearRegressionSolver::QR,
-//         ..Default::default()
-//     });
-//     bench.iter(|| {
-//         let _solution = ridge_reg.fit(&x, &y);
-//     });
-// }
+#[bench]
+fn fit_ridge_reg_qr_bench(bench: &mut Bencher) {
+    let (x, y) = dataset();
+    let mut ridge_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
+        fit_intercept: false,
+        solver: LinearModelSolver::Qr,
+        l2_penalty: Some(1.),
+        ..Default::default()
+    });
+    bench.iter(|| {
+        let _solution = ridge_reg.fit(&x, &y);
+    });
+}

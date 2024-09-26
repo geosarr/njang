@@ -11,51 +11,7 @@ use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2, ScalarO
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
 use num_traits::Float;
 
-use super::{LinearModelInternal, LinearModelParameter};
-
-#[derive(Debug, Default, Clone, Copy)]
-pub enum LinearRegressionSolver {
-    /// Uses Singular Value Decomposition
-    ///
-    /// **This solver is available only for Linear regression and Ridge
-    /// regression**.
-    Svd,
-    /// Computes the exact solution
-    ///
-    /// **This solver is available only for Linear regression and Ridge
-    /// regression**.
-    Exact,
-    /// Uses QR decomposition to solve the problem.
-    ///
-    /// **This solver is available only for Linear regression and Ridge
-    /// regression**.
-    Qr,
-    /// Uses Cholesky decomposition
-    ///
-    /// **This solver is available only for Linear regression and Ridge
-    /// regression**.
-    Cholesky,
-    /// Uses Stochastic Gradient Descent
-    ///
-    /// The user should standardize the input predictors, otherwise the
-    /// algorithm may not converge.
-    ///
-    /// **This solver supports all models.**
-    #[default]
-    Sgd,
-    /// Uses Batch Gradient Descent
-    ///
-    /// The user should standardize the input predictors, otherwise the
-    /// algorithm may not converge.
-    ///
-    /// **This solver supports all models.**
-    Bgd,
-    /// Uses Stochastic Average Gradient
-    ///
-    /// The user should standardize the input predictors, otherwise the
-    /// algorithm may not converge.
-    Sag,
-}
+use super::{LinearModelInternal, LinearModelParameter, LinearModelSolver};
 
 /// Hyperparameters used in a linear regression model.
 ///
@@ -83,8 +39,8 @@ pub struct LinearRegressionSettings<T> {
     /// mean) and `Y_mean` designating the average(s) of target(s) `Y`, `dot`
     /// is the matrix multiplication.
     pub fit_intercept: bool,
-    /// Optimization method, see [`LinearRegressionSolver`].
-    pub solver: LinearRegressionSolver,
+    /// Optimization method, see [`LinearModelSolver`].
+    pub solver: LinearModelSolver,
     /// If it is `None`, then no L1-penalty is added to the loss objective
     /// function. Otherwise, if it is equal to `Some(value)`, then `value *
     /// ||coef||`<sub>1</sub> is added to the loss objective function. Instead
@@ -99,15 +55,15 @@ pub struct LinearRegressionSettings<T> {
     /// and numerical issues.
     pub l2_penalty: Option<T>,
     /// Tolerance parameter.
-    /// - Gradient descent solvers (like [Sgd][`LinearRegressionSolver::Sgd`],
-    ///   [Bgd][`LinearRegressionSolver::Bgd`], etc) stop when the relative
-    ///   variation of consecutive iterates is lower than **tol**, that is:
+    /// - Gradient descent solvers (like [Sgd][`LinearModelSolver::Sgd`],
+    ///   [Bgd][`LinearModelSolver::Bgd`], etc) stop when the relative variation
+    ///   of consecutive iterates is lower than **tol**, that is:
     ///     - `||coef_next - coef_current|| <= tol * ||coef_current||`
     /// - No impact on the other algorithms:
-    ///     - [Exact][`LinearRegressionSolver::Exact`]
-    ///     - [Svd][`LinearRegressionSolver::Svd`]
-    ///     - [Qr][`LinearRegressionSolver::Qr`]
-    ///     - [Cholesky][`LinearRegressionSolver::Cholesky`]
+    ///     - [Exact][`LinearModelSolver::Exact`]
+    ///     - [Svd][`LinearModelSolver::Svd`]
+    ///     - [Qr][`LinearModelSolver::Qr`]
+    ///     - [Cholesky][`LinearModelSolver::Cholesky`]
     pub tol: Option<T>,
     /// Step size used in gradient descent algorithms.
     pub step_size: Option<T>,
@@ -130,7 +86,7 @@ impl<T> Default for LinearRegressionSettings<T> {
     fn default() -> Self {
         Self {
             fit_intercept: true,
-            solver: LinearRegressionSolver::default(),
+            solver: LinearModelSolver::default(),
             l1_penalty: None,
             l2_penalty: None,
             tol: None,
@@ -161,9 +117,7 @@ impl<T> Default for LinearRegressionSettings<T> {
 /// **In this case, the same settings apply to all regressions involved**.
 /// ```
 /// use ndarray::{array, Array1, Array2};
-/// use njang::{
-///     LinearRegression, LinearRegressionSettings, LinearRegressionSolver, RegressionModel,
-/// };
+/// use njang::{LinearModelSolver, LinearRegression, LinearRegressionSettings, RegressionModel};
 /// let x = array![[0., 1.], [1., -1.], [-2., 3.]];
 /// let coef = array![[10., 30.], [20., 40.]];
 /// let intercept = 1.;
@@ -171,7 +125,7 @@ impl<T> Default for LinearRegressionSettings<T> {
 /// // multiple linear regression models with intercept.
 /// let mut model = LinearRegression::<Array2<f32>, Array1<f32>>::new(LinearRegressionSettings {
 ///     fit_intercept: true,
-///     solver: LinearRegressionSolver::Exact,
+///     solver: LinearModelSolver::Exact,
 ///     ..Default::default()
 /// });
 /// model.fit(&x, &y);
@@ -283,7 +237,7 @@ macro_rules! impl_regression {
             ) -> Result<Array<T, $ix>, NjangError> {
                 let solver = self.settings.solver;
                 match solver {
-                    LinearRegressionSolver::Svd => {
+                    LinearModelSolver::Svd => {
                         if self.is_linear() {
                             Ok(x.least_squares(y)?.solution)
                         } else if self.is_ridge() {
@@ -299,10 +253,10 @@ macro_rules! impl_regression {
                             return Err(NjangError::NotSupported { item: "Solver" });
                         }
                     }
-                    LinearRegressionSolver::Exact => self.linalg_solve(x, y, exact),
-                    LinearRegressionSolver::Qr => self.linalg_solve(x, y, qr),
-                    LinearRegressionSolver::Cholesky => self.linalg_solve(x, y, cholesky),
-                    LinearRegressionSolver::Sgd => {
+                    LinearModelSolver::Exact => self.linalg_solve(x, y, exact),
+                    LinearModelSolver::Qr => self.linalg_solve(x, y, qr),
+                    LinearModelSolver::Cholesky => self.linalg_solve(x, y, cholesky),
+                    LinearModelSolver::Sgd => {
                         self.set_internal(x, y);
                         // Rescale step_size and penalty(ies) to scale (sub)gradients correctly
                         self.scale_step_size();
@@ -321,7 +275,7 @@ macro_rules! impl_regression {
                             &self.internal,
                         ))
                     }
-                    LinearRegressionSolver::Bgd => {
+                    LinearModelSolver::Bgd => {
                         self.set_internal(x, y);
                         let (n_targets, n_features, rng) = (
                             self.internal.n_targets,
@@ -337,7 +291,7 @@ macro_rules! impl_regression {
                             &self.internal,
                         ))
                     }
-                    LinearRegressionSolver::Sag => {
+                    LinearModelSolver::Sag => {
                         self.set_internal(x, y);
                         // Rescale step_size and penalty(ies) to scale gradients correctly
                         self.scale_step_size();
@@ -446,7 +400,7 @@ macro_rules! impl_regression {
     };
 }
 
-pub fn reshape_to_2d<T, Y>(y: &Y) -> Array2<T>
+fn reshape_to_2d<T, Y>(y: &Y) -> Array2<T>
 where
     T: Float,
     Y: Container<Elem = T>,
@@ -460,7 +414,7 @@ where
     }
 }
 
-pub fn reshape_to_1d<T: Clone>(y: Array2<T>) -> Array1<T> {
+fn reshape_to_1d<T: Clone>(y: Array2<T>) -> Array1<T> {
     y.column(0).to_owned()
 }
 pub(crate) fn init_grad<T, G>(
@@ -511,7 +465,7 @@ impl_regression!(Ix2, Ix1, randu_2d, identity, reshape_to_2d);
 
 //     let settings = LinearRegressionSettings {
 //         fit_intercept: false,
-//         solver: LinearRegressionSolver::Svd,
+//         solver: LinearModelSolver::Svd,
 //         l1_penalty: None,
 //         l2_penalty: None, //Some(1e-6),
 //         tol: Some(1e-6),

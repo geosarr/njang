@@ -7,9 +7,7 @@ extern crate test;
 
 use ndarray::{Array1, Array2};
 use ndarray_rand::{rand::SeedableRng, rand_distr::StandardNormal, RandomExt};
-use njang::{
-    LinearLinearRegressionSettings, LinearLinearRegressionSolver, LinearRegression, RegressionModel,
-};
+use njang::{LinearModelSolver, LinearRegression, LinearRegressionSettings, RegressionModel};
 use rand_chacha::ChaCha20Rng;
 use test::Bencher;
 
@@ -28,7 +26,7 @@ fn fit_lin_reg_exact_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::Exact,
+        solver: LinearModelSolver::Exact,
         ..Default::default()
     });
     bench.iter(|| {
@@ -39,9 +37,9 @@ fn fit_lin_reg_exact_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_lin_reg_svd_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearLinearRegressionSettings {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::Svd,
+        solver: LinearModelSolver::Svd,
         ..Default::default()
     });
     bench.iter(|| {
@@ -52,9 +50,9 @@ fn fit_lin_reg_svd_bench(bench: &mut Bencher) {
 #[bench]
 fn fit_lin_reg_qr_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
-    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearLinearRegressionSettings {
+    let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::Qr,
+        solver: LinearModelSolver::Qr,
         ..Default::default()
     });
     bench.iter(|| {
@@ -67,7 +65,7 @@ fn fit_lin_reg_chol_bench(bench: &mut Bencher) {
     let (x, y) = dataset();
     let mut lin_reg = LinearRegression::<Array1<_>, _>::new(LinearRegressionSettings {
         fit_intercept: false,
-        solver: LinearRegressionSolver::Cholesky,
+        solver: LinearModelSolver::Cholesky,
         ..Default::default()
     });
     bench.iter(|| {

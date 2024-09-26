@@ -1,6 +1,6 @@
 use ndarray::{Array0, Array1, Array2};
 use njang::{
-    LinearRegression as LinReg, LinearRegressionSettings, LinearRegressionSolver, RegressionModel,
+    LinearRegression as LinReg, LinearRegressionSettings, LinearModelSolver, RegressionModel,
 };
 use numpy::{IntoPyArray, PyArray0, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -146,17 +146,17 @@ macro_rules! impl_ridge_reg {
             ) -> PyResult<Self> {
                 let solver = if let Some(solvr) = solver {
                     if solvr == "sgd" {
-                        LinearRegressionSolver::Sgd
+                        LinearModelSolver::Sgd
                     } else if solvr == "exact" {
-                        LinearRegressionSolver::Exact
+                        LinearModelSolver::Exact
                     } else if solvr == "svd" {
-                        LinearRegressionSolver::Svd
+                        LinearModelSolver::Svd
                     } else if solvr == "qr" {
-                        LinearRegressionSolver::Qr
+                        LinearModelSolver::Qr
                     } else if solvr == "cholesky" {
-                        LinearRegressionSolver::Cholesky
+                        LinearModelSolver::Cholesky
                     } else if solvr == "sag" {
-                        LinearRegressionSolver::Sag
+                        LinearModelSolver::Sag
                     } else {
                         return Err(PyValueError::new_err(format!(
                             "solver `{}` not supported",
@@ -164,7 +164,7 @@ macro_rules! impl_ridge_reg {
                         )));
                     }
                 } else {
-                    LinearRegressionSolver::Sgd
+                    LinearModelSolver::Sgd
                 };
                 let settings = LinearRegressionSettings {
                     l1_penalty: None,

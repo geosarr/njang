@@ -6,14 +6,14 @@ use alloc::vec::Vec;
 use ndarray::{Array, Array0, Array1, Array2, Axis, Ix0, Ix1, Ix2};
 use ndarray_linalg::Inverse;
 
-const REGRESSION_SOLVERS: [LinearRegressionSolver; 7] = [
-    LinearRegressionSolver::Sgd,
-    LinearRegressionSolver::Bgd,
-    LinearRegressionSolver::Sag,
-    LinearRegressionSolver::Svd,
-    LinearRegressionSolver::Qr,
-    LinearRegressionSolver::Exact,
-    LinearRegressionSolver::Cholesky,
+const REGRESSION_SOLVERS: [LinearModelSolver; 7] = [
+    LinearModelSolver::Sgd,
+    LinearModelSolver::Bgd,
+    LinearModelSolver::Sag,
+    LinearModelSolver::Svd,
+    LinearModelSolver::Qr,
+    LinearModelSolver::Exact,
+    LinearModelSolver::Cholesky,
 ];
 
 // from https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn.linear_model.LinearRegression
@@ -276,10 +276,10 @@ fn test_lin_reg_with_intercept_wide_dataset() {
     let y = x.dot(&coef);
     let expected_coef = x.t().dot(&xxt).dot(&y);
     for solver in [
-        LinearRegressionSolver::Svd,
-        LinearRegressionSolver::Qr,
-        LinearRegressionSolver::Exact,
-        LinearRegressionSolver::Cholesky,
+        LinearModelSolver::Svd,
+        LinearModelSolver::Qr,
+        LinearModelSolver::Exact,
+        LinearModelSolver::Cholesky,
     ] {
         println!("\n{:?}", solver);
         let settings = LinearRegressionSettings {

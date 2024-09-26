@@ -5,16 +5,15 @@ use num_traits::Float;
 use crate::{
     error::NjangError,
     traits::{Container, Model, Scalar},
-    ClassificationModel, LinearRegression, LinearRegressionSettings, LinearRegressionSolver,
+    ClassificationModel, LinearModelSolver, LinearRegression, LinearRegressionSettings,
     RegressionModel,
 };
 
 use super::{argmax, dummies, unique_labels};
 
-pub type RidgeClassificationSolver = LinearRegressionSolver;
 pub struct RidgeClassificationSettings<T> {
     pub fit_intercept: bool,
-    pub solver: RidgeClassificationSolver,
+    pub solver: LinearModelSolver,
     pub l2_penalty: Option<T>,
     pub tol: Option<T>,
     pub step_size: Option<T>,
@@ -113,7 +112,7 @@ fn code() {
 
     let settings = RidgeClassificationSettings {
         fit_intercept: false,
-        solver: RidgeClassificationSolver::Sag,
+        solver: LinearModelSolver::Sag,
         l2_penalty: None,
         tol: Some(1e-6),
         step_size: Some(1e-3),

@@ -6,11 +6,9 @@ pub use logistic_regression::*;
 use ndarray::{Array1, Array2, Axis};
 use num_traits::Float;
 
-use super::{LinearRegressionSettings, LinearRegressionSolver};
+use super::{LinearModelSolver, LinearRegressionSettings};
 use crate::traits::{ClassificationModel, Container, Model, RegressionModel, Scalar};
-pub use ridge_classification::{
-    RidgeClassification, RidgeClassificationSettings, RidgeClassificationSolver,
-};
+pub use ridge_classification::{RidgeClassification, RidgeClassificationSettings};
 use std::collections::HashSet;
 
 pub(crate) fn unique_labels<L>(labels: L) -> Vec<L::Item>
