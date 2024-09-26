@@ -35,13 +35,36 @@ pub trait ClassificationModel: for<'a> Model<'a> {
     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult;
 }
 
-/// Trait to handle float-pointing numbers.
+/// Handles float-pointing numbers.
 pub trait Scalar:
     Lapack + PartialOrd + Float + ScalarOperand + SampleUniform + core::fmt::Debug
 {
 }
 impl Scalar for f32 {}
 impl Scalar for f64 {}
+
+/// Handles label types for classification tasks.
+pub trait Label: Eq + Ord + core::hash::Hash + Copy + 'static {}
+macro_rules! impl_label(
+    ( $( $t:ty ),* )=> {
+        $(
+            impl Label for $t {}
+        )*
+    }
+);
+impl_label!(
+    usize,
+    u8,
+    u16,
+    u32,
+    u64,
+    isize,
+    i8,
+    i16,
+    i32,
+    i64,
+    &'static str
+);
 
 /// Base trait handling the modelling data structures.
 pub trait Container {
@@ -132,10 +155,10 @@ where
 }
 
 #[test]
-fn traits(){
+fn traits() {
     let a = ndarray::array![1., 2., 3.];
     let sum = a.sum_axis(Axis(0));
     println!("a:\n{:?}", a);
     println!("sum:\n{:?}", sum);
-    println!("norm:\n{:?}", &a/sum);
+    println!("norm:\n{:?}", &a / sum);
 }

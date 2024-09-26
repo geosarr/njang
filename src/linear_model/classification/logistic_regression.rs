@@ -1,8 +1,10 @@
 use rand_chacha::ChaCha20Rng;
 
-use core::ops::Sub;
+use core::{hash::Hash, ops::Sub};
 use num_traits::Float;
 
+use crate::solver::batch_gradient_descent;
+use crate::traits::Algebra;
 use crate::{
     error::NjangError,
     linear_model::{
@@ -10,10 +12,11 @@ use crate::{
         preprocess, randu_2d, LinearModelParameter,
     },
     solver::stochastic_gradient_descent,
-    traits::{Container, Model, Scalar},
+    traits::{Container, Label, Model, Scalar},
+    ClassificationModel,
 };
 
-use ndarray::{Array1, Array2, ScalarOperand};
+use ndarray::{Array1, Array2, Axis, ScalarOperand};
 
 #[derive(Default, Debug, Clone, Copy)]
 pub enum LogisticRegressionSolver {
@@ -23,11 +26,11 @@ pub enum LogisticRegressionSolver {
     /// algorithm may not converge.
     #[default]
     Sgd,
-    // /// Uses Batch Gradient Descent
-    // ///
-    // /// The user should standardize the input predictors, otherwise the
-    // /// algorithm may not converge.
-    // Bgd,
+    /// Uses Batch Gradient Descent
+    ///
+    /// The user should standardize the input predictors, otherwise the
+    /// algorithm may not converge.
+    Bgd,
     // /// Uses Stochastic Average Gradient
     // ///
     // /// The user should standardize the input predictors, otherwise the
@@ -35,7 +38,7 @@ pub enum LogisticRegressionSolver {
     // Sag,
 }
 
-use crate::linear_model::ModelInternal;
+use crate::linear_model::LinearModelInternal;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LogisticRegressionParameter<C, I> {
@@ -81,16 +84,17 @@ pub struct LogisticRegressionSettings<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct LogisticRegression<C, I>
+pub struct LogisticRegression<C, I, L>
 where
     C: Container,
 {
     pub parameter: LinearModelParameter<C, I>,
     pub settings: LogisticRegressionSettings<C::Elem>,
-    pub(crate) internal: ModelInternal<C::Elem>,
+    pub(crate) internal: LinearModelInternal<C::Elem>,
+    pub labels: Vec<L>,
 }
 
-impl<C: Container, I> LogisticRegression<C, I> {
+impl<C: Container, I, L> LogisticRegression<C, I, L> {
     pub fn new(settings: LogisticRegressionSettings<C::Elem>) -> Self
     where
         C::Elem: Float,
@@ -101,25 +105,30 @@ impl<C: Container, I> LogisticRegression<C, I> {
                 intercept: None,
             },
             settings,
-            internal: ModelInternal::new(),
+            internal: LinearModelInternal::new(),
+            labels: Vec::new(),
         }
     }
 }
 
 use num_traits::{FromPrimitive, Zero};
 
-impl<'a, T: Scalar + Float + Zero + FromPrimitive + ScalarOperand> Model<'a>
-    for LogisticRegression<Array2<T>, Array1<T>>
+impl<
+        'a,
+        T: Scalar + Float + Zero + FromPrimitive + ScalarOperand,
+        L: Ord + Hash + Eq + Copy + 'static,
+    > Model<'a> for LogisticRegression<Array2<T>, Array1<T>, L>
 {
     type FitResult = Result<(), NjangError>;
-    type Data = (&'a Array2<T>, &'a Array1<i32>);
+    type Data = (&'a Array2<T>, &'a Array1<L>);
     fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
         let (x, y) = data;
-        let labels = unique_labels((*y).iter())
-            .into_iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let y_reg = dummies::<T, i32>(*y, &labels);
+        let (xlen, ylen) = (x.nrows(), y.len());
+        if xlen != ylen {
+            return Err(NjangError::NotMatchedLength { xlen, ylen });
+        }
+        self.labels = unique_labels((**y).iter()).into_iter().copied().collect();
+        let y_reg = dummies(*y, &self.labels);
         // let (x_centered, x_mean, y_centered, y_mean) = preprocess(*x, *y);
         self.parameter.coef = match self.settings.solver {
             LogisticRegressionSolver::Sgd => {
@@ -141,37 +150,84 @@ impl<'a, T: Scalar + Float + Zero + FromPrimitive + ScalarOperand> Model<'a>
                     &self.internal,
                 ))
             }
+            LogisticRegressionSolver::Bgd => {
+                self.set_internal(*x, &y_reg);
+                let (n_targets, n_features, rng) = (
+                    self.internal.n_targets,
+                    self.internal.n_features,
+                    self.internal.rng.as_mut().unwrap(),
+                );
+                let coef = randu_2d(&[n_features, n_targets], rng);
+                Some(batch_gradient_descent(
+                    *x,
+                    &y_reg,
+                    coef,
+                    self.gradient_function(),
+                    &self.internal,
+                ))
+            }
         };
         Ok(())
     }
 }
 
+impl<T: Scalar, L: Label> ClassificationModel for LogisticRegression<Array2<T>, Array1<T>, L> {
+    type X = Array2<T>;
+    type Y = Array1<L>;
+    type PredictResult = Result<Array1<L>, ()>;
+    type PredictProbaResult = Result<Array2<T>, ()>;
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as Model<'_>>::FitResult {
+        let data = (x, y);
+        <Self as Model>::fit(self, &data)
+    }
+    fn predict(&self, x: &Self::X) -> Self::PredictResult {
+        if let Some(coef) = self.coef() {
+            let raw_prediction = x.dot(coef).softmax(None, 0);
+            Ok(raw_prediction
+                .axis_iter(Axis(0))
+                .map(|pred| self.labels[argmax(pred.iter().copied().enumerate()).unwrap()])
+                .collect())
+        } else {
+            Err(())
+        }
+    }
+    fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult {
+        if let Some(coef) = self.coef() {
+            Ok(x.dot(coef).softmax(None, 0))
+        } else {
+            Err(())
+        }
+    }
+}
+
 #[test]
 fn log() {
+    use crate::traits::Algebra;
     use ndarray::array;
 
-    let x = array![[0., 0., 1.], [1., 0., 0.], [1., 0., 1.]];
-    let y = array![0, 1, 2];
+    let x = array![[0., 0., 1.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]];
+    let y = array!["C", "A", "B", "Z"];
     println!("y:\n{:?}", y);
 
     let settings = LogisticRegressionSettings {
         fit_intercept: false,
-        solver: LogisticRegressionSolver::Sgd,
+        solver: LogisticRegressionSolver::Bgd,
         l1_penalty: None,
-        l2_penalty: None,
+        l2_penalty: Some(0.),
         tol: Some(1e-6),
         step_size: Some(1e-3),
         random_state: Some(0),
         max_iter: Some(100000),
     };
-    let mut model = LogisticRegression::<Array2<_>, _>::new(settings);
+    let mut model = LogisticRegression::<Array2<_>, _, _>::new(settings);
     match Model::fit(&mut model, &(&x, &y)) {
         Ok(_) => {
-            println!("{:?}", model.coef());
+            println!("{:?}", model.predict_proba(&x));
+            println!("\n{:?}", model.predict(&x));
         }
         Err(error) => {
             println!("{:?}", error);
         }
     };
-    // assert_eq!(model.predict(&x).unwrap(), y);
+    assert_eq!(model.predict(&x).unwrap(), y);
 }

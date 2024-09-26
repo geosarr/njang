@@ -11,7 +11,7 @@ use ndarray::{s, Array, Array1, Array2, ArrayView2, Axis, Ix0, Ix1, Ix2, ScalarO
 use ndarray_linalg::{error::LinalgError, Lapack, LeastSquaresSvd};
 use num_traits::Float;
 
-use super::{LinearModelInternal, LinearModelParameter, ModelInternal};
+use super::{LinearModelInternal, LinearModelParameter};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum LinearRegressionSolver {
@@ -196,7 +196,7 @@ where
 {
     pub parameter: LinearModelParameter<C, I>,
     pub settings: LinearRegressionSettings<C::Elem>,
-    pub(crate) internal: ModelInternal<C::Elem>,
+    pub(crate) internal: LinearModelInternal<C::Elem>,
 }
 
 impl<C: Container, I> LinearRegression<C, I> {
@@ -210,7 +210,7 @@ impl<C: Container, I> LinearRegression<C, I> {
                 intercept: None,
             },
             settings,
-            internal: ModelInternal::new(),
+            internal: LinearModelInternal::new(),
         }
     }
 }
@@ -463,17 +463,16 @@ where
 pub fn reshape_to_1d<T: Clone>(y: Array2<T>) -> Array1<T> {
     y.column(0).to_owned()
 }
-pub(crate) fn init_grad<T, G, S>(
+pub(crate) fn init_grad<T, G>(
     x: &Array2<T>,
     y: &Array2<T>,
     coef: &Array2<T>,
     scaled_grad: G,
-    settings: &S,
+    settings: &LinearModelInternal<T>,
 ) -> (Array2<T>, Array2<T>)
 where
     for<'a> T: Lapack + ScalarOperand,
-    G: Fn(&Array2<T>, &Array2<T>, &Array2<T>, &S) -> Array2<T>,
-    S: LinearModelInternal<Scalar = T>,
+    G: Fn(&Array2<T>, &Array2<T>, &Array2<T>, &LinearModelInternal<T>) -> Array2<T>,
 {
     let (n_samples, n_features, n_targets) = (x.nrows(), x.ncols(), y.ncols());
     let mut grad = Array2::<_>::zeros((n_features, n_samples * n_targets));

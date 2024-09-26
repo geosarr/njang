@@ -40,26 +40,6 @@ where
     (x_centered, x_mean, y_centered, y_mean)
 }
 
-/// Used to compute gradient of the square loss function for linear models (like
-/// linear regression, Ridge regression, etc.)
-pub(crate) fn square_loss_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
-where
-    for<'a> Y: Sub<&'a Y, Output = Y>,
-    Array2<T>: Dot<Y, Output = Y>,
-    for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
-{
-    return x.t().dot(&(x.dot(coef) - y));
-}
-
-pub(crate) fn cross_entropy_loss_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
-where
-    for<'a> Y: Sub<&'a Y, Output = Y> + Algebra<SoftmaxOutput = Y>,
-    Array2<T>: Dot<Y, Output = Y>,
-    for<'a> ArrayView2<'a, T>: Dot<Y, Output = Y>,
-{
-    return x.t().dot(&(x.dot(&coef).softmax(None, 0) - y));
-}
-
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LinearModelParameter<C, I> {
     /// Non-intercept weight(s).
@@ -68,51 +48,9 @@ pub struct LinearModelParameter<C, I> {
     pub intercept: Option<I>,
 }
 
-pub(crate) trait LinearModelInternal {
-    type Scalar;
-    fn max_iter(&self) -> Option<usize> {
-        None
-    }
-    fn tol(&self) -> Option<Self::Scalar> {
-        None
-    }
-    fn rng(&self) -> Option<ChaCha20Rng> {
-        None
-    }
-    fn n_targets(&self) -> Option<usize> {
-        None
-    }
-    fn n_samples(&self) -> Option<usize> {
-        None
-    }
-}
-
-macro_rules! impl_settings {
-    ($settings:ident) => {
-        impl<T: Copy> LinearModelInternal for $settings<T> {
-            type Scalar = T;
-            fn max_iter(&self) -> Option<usize> {
-                self.max_iter
-            }
-            fn tol(&self) -> Option<Self::Scalar> {
-                self.tol
-            }
-            fn rng(&self) -> Option<ChaCha20Rng> {
-                self.rng.clone()
-            }
-            fn n_targets(&self) -> Option<usize> {
-                Some(self.n_targets)
-            }
-            fn n_samples(&self) -> Option<usize> {
-                Some(self.n_samples)
-            }
-        }
-    };
-}
-
 /// This is responsible for processing settings, setting default values
 #[derive(Debug, Clone)]
-pub(crate) struct ModelInternal<T> {
+pub(crate) struct LinearModelInternal<T> {
     pub n_samples: usize,
     pub n_features: usize,
     pub n_targets: usize,
@@ -123,7 +61,7 @@ pub(crate) struct ModelInternal<T> {
     pub rng: Option<ChaCha20Rng>,
     pub max_iter: Option<usize>,
 }
-impl<T> ModelInternal<T> {
+impl<T> LinearModelInternal<T> {
     pub fn new() -> Self {
         Self {
             n_samples: 0,
@@ -138,7 +76,7 @@ impl<T> ModelInternal<T> {
         }
     }
 }
-impl_settings!(ModelInternal);
+// impl_settings!(ModelInternal);
 
 pub(crate) fn exact<T, Y>(x: Array2<T>, z: ArrayView2<T>, y: &Y) -> Result<Y, LinalgError>
 where
@@ -196,8 +134,10 @@ pub(crate) fn randu_2d<T: Float + SampleUniform, R: Rng>(
 }
 
 macro_rules! impl_partial_linear_model {
-    ($model:ident, $settings:ident, $internal:ident, $linear_grad:ident, $lasso_grad:ident, $ridge_grad:ident, $elastic_grad:ident) => {
-        impl<C: Container, I> $model<C, I> {
+    ($model:ident, $settings:ident, $internal:ident, $linear_grad:ident, $lasso_grad:ident, $ridge_grad:ident, $elastic_grad:ident, $($container:ident),*) => {
+        impl<$( $container ),*> $model<$( $container ),*>
+        where C: Container
+        {
             /// Coefficients of the model
             pub fn coef(&self) -> Option<&C> {
                 self.parameter.coef.as_ref()
@@ -316,15 +256,13 @@ macro_rules! impl_partial_linear_model {
     };
 }
 macro_rules! impl_scale_penalty {
-    ($model:ident, $scaler_name:ident, $field:ident) => {
-        impl<C: Container, I> $model<C, I>
+    ($model:ident, $scaler_name:ident, $field:ident, $($container:ident),*) => {
+        impl<$($container),*> $model<$($container),*>
         where
+            C: Container,
             C::Elem: Float + FromPrimitive,
         {
-            fn $scaler_name(&mut self)
-            where
-                C::Elem: Float + FromPrimitive,
-            {
+            fn $scaler_name(&mut self) {
                 let n_targets = C::Elem::from_usize(self.internal.n_targets).unwrap();
                 let n_samples = C::Elem::from_usize(self.internal.n_samples).unwrap();
                 self.internal
@@ -336,9 +274,10 @@ macro_rules! impl_scale_penalty {
     };
 }
 macro_rules! impl_settings_to_internal {
-    ($model:ident, $setter_name:ident, $field_name:ident, $default:ident) => {
-        impl<C: Container, I> $model<C, I>
+    ($model:ident, $setter_name:ident, $field_name:ident, $default:ident, $($container:ident),*) => {
+        impl<$($container),*> $model<$($container),*>
         where
+            C: Container,
             C::Elem: Copy + FromPrimitive + core::fmt::Debug,
         {
             fn $setter_name(&mut self) {
@@ -353,26 +292,28 @@ macro_rules! impl_settings_to_internal {
 }
 
 macro_rules! impl_all_linear_model {
-    ($model:ident, $settings:ident, $internal:ident, $linear_grad:ident, $lasso_grad:ident, $ridge_grad:ident, $elastic_grad:ident) => {
-        impl_scale_penalty!($model, scale_l1_penalty, l1_penalty);
-        impl_scale_penalty!($model, scale_l2_penalty, l2_penalty);
-        impl_settings_to_internal!($model, set_l1_penalty_to_internal, l1_penalty, DEFAULT_L1);
-        impl_settings_to_internal!($model, set_l2_penalty_to_internal, l2_penalty, DEFAULT_L2);
-        impl_settings_to_internal!($model, set_tol_to_internal, tol, DEFAULT_TOL);
+    ($model:ident, $settings:ident, $internal:ident, $linear_grad:ident, $lasso_grad:ident, $ridge_grad:ident, $elastic_grad:ident, $($container:ident),*) => {
+        impl_scale_penalty!($model, scale_l1_penalty, l1_penalty, $($container),*);
+        impl_scale_penalty!($model, scale_l2_penalty, l2_penalty, $($container),*);
+        impl_settings_to_internal!($model, set_l1_penalty_to_internal, l1_penalty, DEFAULT_L1, $($container),*);
+        impl_settings_to_internal!($model, set_l2_penalty_to_internal, l2_penalty, DEFAULT_L2, $($container),*);
+        impl_settings_to_internal!($model, set_tol_to_internal, tol, DEFAULT_TOL, $($container),*);
         impl_settings_to_internal!(
             $model,
             set_step_size_to_internal,
             step_size,
-            DEFAULT_STEP_SIZE
+            DEFAULT_STEP_SIZE,
+            $($container),*
         );
         impl_partial_linear_model!(
             $model,
             $settings,
-            ModelInternal,
+            $internal,
             $linear_grad,
             $lasso_grad,
             $ridge_grad,
-            $elastic_grad
+            $elastic_grad,
+            $($container),*
         );
     };
 }
@@ -380,18 +321,23 @@ macro_rules! impl_all_linear_model {
 impl_all_linear_model!(
     LinearRegression,
     LinearRegressionSettings,
-    ModelInternal,
+    LinearModelInternal,
     linear_regression_gradient,
     lasso_regression_gradient,
     ridge_regression_gradient,
-    elastic_net_regression_gradient
+    elastic_net_regression_gradient,
+    C,
+    I
 );
 impl_all_linear_model!(
     LogisticRegression,
     LogisticRegressionSettings,
-    ModelInternal,
+    LinearModelInternal,
     logistic_regression_gradient,
     logistic_lasso_regression_gradient,
     logistic_ridge_regression_gradient,
-    logistic_elastic_net_regression_gradient
+    logistic_elastic_net_regression_gradient,
+    C,
+    I,
+    L
 );

@@ -11,4 +11,8 @@ pub enum NjangError {
     /// Not supported item.
     #[error("{item} is not supported")]
     NotSupported { item: &'static str },
+
+    /// Shape
+    #[error("The number of samples {xlen} and {ylen} should match.")]
+    NotMatchedLength { xlen: usize, ylen: usize },
 }

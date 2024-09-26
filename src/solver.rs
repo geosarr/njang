@@ -11,23 +11,22 @@ use crate::{
 
 /// Callers have to make sure that the settings needed are provided in the
 /// object `settings` before using this function.
-pub(crate) fn batch_gradient_descent<T, Y, G, S>(
+pub(crate) fn batch_gradient_descent<T, Y, G>(
     x: &Array2<T>,
     y: &Y,
     mut coef: Y,
     scaled_grad: G,
-    settings: &S,
+    settings: &LinearModelInternal<T>,
 ) -> Y
 where
     T: Lapack + PartialOrd,
     Y: Algebra<Elem = T>,
     for<'a> &'a Y: Add<Y, Output = Y>,
-    G: Fn(&Array2<T>, &Y, &Y, &S) -> Y,
-    S: LinearModelInternal<Scalar = T>,
+    G: Fn(&Array2<T>, &Y, &Y, &LinearModelInternal<T>) -> Y,
 {
     // Callers have to make sure that these settings are provided in the object
     // `settings` before using this function
-    let (max_iter, tol) = (settings.max_iter().unwrap(), settings.tol().unwrap());
+    let (max_iter, tol) = (settings.max_iter.unwrap(), settings.tol.unwrap());
     for _ in 0..max_iter {
         // minus step size should be multiplied to scaled_grad function output.
         let update = scaled_grad(x, y, &coef, settings);
@@ -41,26 +40,25 @@ where
 
 /// Callers have to make sure that the settings needed are provided in the
 /// object `settings` before using this function.
-pub(crate) fn stochastic_gradient_descent<T, Y, G, S>(
+pub(crate) fn stochastic_gradient_descent<T, Y, G>(
     x: &Array2<T>,
     y: &Y,
     mut coef: Y,
     scaled_grad: G,
-    settings: &S,
+    settings: &LinearModelInternal<T>,
 ) -> Y
 where
     T: Lapack + PartialOrd,
     Y: Algebra<Elem = T, SelectionOutput = Y>,
     for<'a> &'a Y: Add<Y, Output = Y>,
     Array2<T>: Container<SelectionOutput = Array2<T>>,
-    G: Fn(&Array2<T>, &Y, &Y, &S) -> Y,
-    S: LinearModelInternal<Scalar = T>,
+    G: Fn(&Array2<T>, &Y, &Y, &LinearModelInternal<T>) -> Y,
 {
     let (max_iter, tol, mut rng, n_targets) = (
-        settings.max_iter().unwrap(),
-        settings.tol().unwrap(),
-        settings.rng().unwrap(),
-        settings.n_targets().unwrap(),
+        settings.max_iter.unwrap(),
+        settings.tol.unwrap(),
+        settings.rng.clone().unwrap(),
+        settings.n_targets,
     );
     let unif = Uniform::<usize>::new(0, x.nrows());
     // When sampling among matrix x rows, the same sample is duplicated as many
@@ -92,27 +90,26 @@ where
 /// account the step size. The shape of `gradients` should be [n_features;
 /// n_samples * n_targets] and the shape of `sum_gradients` should be
 /// [n_features; n_targets] before the first iteration of this function.
-pub(crate) fn stochastic_average_gradient<T, G, S>(
+pub(crate) fn stochastic_average_gradient<T, G>(
     x: &Array2<T>,
     y: &Array2<T>,
     mut coef: Array2<T>,
     scaled_grad: G,
-    settings: &S,
+    settings: &LinearModelInternal<T>,
     mut gradients: Array2<T>,
     mut sum_gradients: Array2<T>,
 ) -> Array2<T>
 where
     T: Lapack + PartialOrd + ScalarOperand,
     Array2<T>: Algebra<Elem = T, SelectionOutput = Array2<T>>,
-    G: Fn(&Array2<T>, &Array2<T>, &Array2<T>, &S) -> Array2<T>,
-    S: LinearModelInternal<Scalar = T>,
+    G: Fn(&Array2<T>, &Array2<T>, &Array2<T>, &LinearModelInternal<T>) -> Array2<T>,
 {
     let (max_iter, tol, mut rng, n_targets, n_samples) = (
-        settings.max_iter().unwrap(),
-        settings.tol().unwrap(),
-        settings.rng().unwrap(),
-        settings.n_targets().unwrap(),
-        settings.n_samples().unwrap(),
+        settings.max_iter.unwrap(),
+        settings.tol.unwrap(),
+        settings.rng.clone().unwrap(),
+        settings.n_targets,
+        settings.n_samples,
     );
     let unif = Uniform::<usize>::new(0, x.nrows());
     // When sampling among matrix x rows, the same sample is duplicated as many
