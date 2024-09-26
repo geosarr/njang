@@ -5,6 +5,7 @@ use num_traits::Float;
 
 use crate::solver::batch_gradient_descent;
 use crate::traits::Algebra;
+use crate::LinearModelSolver;
 use crate::{
     error::NjangError,
     linear_model::{
@@ -17,26 +18,6 @@ use crate::{
 };
 
 use ndarray::{Array1, Array2, Axis, ScalarOperand};
-
-#[derive(Default, Debug, Clone, Copy)]
-pub enum LogisticRegressionSolver {
-    /// Uses Stochastic Gradient Descent
-    ///
-    /// The user should standardize the input predictors, otherwise the
-    /// algorithm may not converge.
-    #[default]
-    Sgd,
-    /// Uses Batch Gradient Descent
-    ///
-    /// The user should standardize the input predictors, otherwise the
-    /// algorithm may not converge.
-    Bgd,
-    // /// Uses Stochastic Average Gradient
-    // ///
-    // /// The user should standardize the input predictors, otherwise the
-    // /// algorithm may not converge.
-    // Sag,
-}
 
 use crate::linear_model::LinearModelInternal;
 
@@ -54,8 +35,8 @@ pub struct LogisticRegressionSettings<T> {
     /// If it is `true` then the model fits with an intercept, `false`
     /// without an intercept.
     pub fit_intercept: bool,
-    /// Optimization method, see [`LogisticRegressionSolver`].
-    pub solver: LogisticRegressionSolver,
+    /// Optimization method, see [`LinearModelSolver`].
+    pub solver: LinearModelSolver,
     /// If it is `None`, then no L1-penalty is added to the loss objective
     /// function. Otherwise, if it is equal to `Some(value)`, then `value *
     /// ||coef||`<sub>1</sub> is added to the loss objective function. Instead
@@ -70,9 +51,9 @@ pub struct LogisticRegressionSettings<T> {
     /// and numerical issues.
     pub l2_penalty: Option<T>,
     /// Tolerance parameter.
-    /// - Gradient descent solvers (like [Sgd][`LogisticRegressionSolver::Sgd`],
-    ///   [Bgd][`LogisticRegressionSolver::Bgd`], etc) stop when the relative
-    ///   variation of consecutive iterates is lower than **tol**, that is:
+    /// - Gradient descent solvers (like [Sgd][`LinearModelSolver::Sgd`],
+    ///   [Bgd][`LinearModelSolver::Bgd`], etc) stop when the relative variation
+    ///   of consecutive iterates is lower than **tol**, that is:
     ///     - `||coef_next - coef_current|| <= tol *||coef_current||`
     pub tol: Option<T>,
     /// Step size used in gradient descent algorithms.
@@ -111,14 +92,7 @@ impl<C: Container, I, L> LogisticRegression<C, I, L> {
     }
 }
 
-use num_traits::{FromPrimitive, Zero};
-
-impl<
-        'a,
-        T: Scalar + Float + Zero + FromPrimitive + ScalarOperand,
-        L: Ord + Hash + Eq + Copy + 'static,
-    > Model<'a> for LogisticRegression<Array2<T>, Array1<T>, L>
-{
+impl<'a, T: Scalar, L: Label> Model<'a> for LogisticRegression<Array2<T>, Array1<T>, L> {
     type FitResult = Result<(), NjangError>;
     type Data = (&'a Array2<T>, &'a Array1<L>);
     fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
@@ -131,7 +105,7 @@ impl<
         let y_reg = dummies(*y, &self.labels);
         // let (x_centered, x_mean, y_centered, y_mean) = preprocess(*x, *y);
         self.parameter.coef = match self.settings.solver {
-            LogisticRegressionSolver::Sgd => {
+            LinearModelSolver::Sgd => {
                 self.set_internal(*x, &y_reg);
                 // Rescale step_size and penalty(ies) to scale (sub)gradients correctly
                 self.scale_step_size();
@@ -150,7 +124,7 @@ impl<
                     &self.internal,
                 ))
             }
-            LogisticRegressionSolver::Bgd => {
+            LinearModelSolver::Bgd => {
                 self.set_internal(*x, &y_reg);
                 let (n_targets, n_features, rng) = (
                     self.internal.n_targets,
@@ -166,6 +140,7 @@ impl<
                     &self.internal,
                 ))
             }
+            _ => return Err(NjangError::NotSupported { item: "Solver" }),
         };
         Ok(())
     }
@@ -211,7 +186,7 @@ fn log() {
 
     let settings = LogisticRegressionSettings {
         fit_intercept: false,
-        solver: LogisticRegressionSolver::Bgd,
+        solver: LinearModelSolver::Svd,
         l1_penalty: None,
         l2_penalty: Some(0.),
         tol: Some(1e-6),
@@ -223,11 +198,12 @@ fn log() {
     match Model::fit(&mut model, &(&x, &y)) {
         Ok(_) => {
             println!("{:?}", model.predict_proba(&x));
-            println!("\n{:?}", model.predict(&x));
+            let y_pred = model.predict(&x);
+            println!("\n{:?}", y_pred);
+            assert_eq!(y_pred.unwrap(), y);
         }
         Err(error) => {
             println!("{:?}", error);
         }
     };
-    assert_eq!(model.predict(&x).unwrap(), y);
 }

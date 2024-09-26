@@ -354,6 +354,10 @@ macro_rules! impl_regression {
             type Data = (&'a Array2<T>, &'a Array<T, $ix>);
             fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
                 let (x, y) = data;
+                let (xlen, ylen) = (x.nrows(), y.len());
+                if xlen != ylen {
+                    return Err(NjangError::NotMatchedLength { xlen, ylen });
+                }
                 let fit_intercept = self.settings.fit_intercept;
                 if fit_intercept {
                     let (x_centered, x_mean, y_centered, y_mean) = preprocess(*x, *y);
