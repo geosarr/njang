@@ -10,7 +10,7 @@ pub enum NjangError {
 
     /// Not supported item.
     #[error("{item} is not supported")]
-    NotSupported { item: &'static str },
+    NotSupported { item: String },
 
     /// Shape
     #[error("The number of samples {xlen} and {ylen} should match.")]

@@ -1,6 +1,7 @@
 use ndarray::{Array0, Array1, Array2};
 use njang::{
-    LinearRegression as LinReg, LinearRegressionSettings, LinearModelSolver, RegressionModel,
+    ClassificationModel, LinearModelSolver, LinearRegression as LinReg, LinearRegressionSettings,
+    LogisticRegression as LogReg, LogisticRegressionSettings, RegressionModel,
 };
 use numpy::{IntoPyArray, PyArray0, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -8,6 +9,78 @@ use pyo3::{exceptions::PyValueError, prelude::*};
 #[pyclass]
 pub struct LinearRegression {
     reg: RidgeRegression,
+}
+
+#[pyclass]
+pub struct LogisticRegression {
+    reg: LogReg<Array2<f64>, Array1<f64>, isize>,
+}
+
+#[pymethods]
+impl LogisticRegression {
+    #[new]
+    pub fn new(
+        fit_intercept: bool,
+        max_iter: Option<usize>,
+        l1_penalty: Option<f64>,
+        l2_penalty: Option<f64>,
+        tol: Option<f64>,
+        solver: Option<&str>,
+        random_state: Option<u32>,
+    ) -> PyResult<Self> {
+        let solver = if let Some(solvr) = solver {
+            if solvr == "sgd" {
+                LinearModelSolver::Sgd
+            } else if solvr == "bgd" {
+                LinearModelSolver::Bgd
+            } else {
+                return Err(PyValueError::new_err(format!(
+                    "solver `{}` not supported",
+                    solvr
+                )));
+            }
+        } else {
+            LinearModelSolver::Sgd
+        };
+        let settings = LogisticRegressionSettings {
+            l1_penalty,
+            l2_penalty,
+            step_size: Some(0.001),
+            fit_intercept,
+            solver,
+            tol: Some(tol.unwrap_or(1e-4)),
+            random_state,
+            max_iter: Some(max_iter.unwrap_or(100000)),
+        };
+        Ok(Self {
+            reg: LogReg::new(settings),
+        })
+    }
+    pub fn fit<'py>(
+        &mut self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<f64>,
+        y: PyReadonlyArray1<isize>,
+    ) -> PyResult<()> {
+        let _ = self
+            .reg
+            .fit(&x.as_array().to_owned(), &y.as_array().to_owned());
+        Ok(())
+    }
+    #[getter]
+    pub fn intercept<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        match self.reg.intercept() {
+            Some(value) => Ok(value.clone().into_pyarray_bound(py)),
+            None => Err(PyValueError::new_err("no intercept")),
+        }
+    }
+    #[getter]
+    pub fn coef<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        match self.reg.coef() {
+            Some(value) => Ok(value.clone().into_pyarray_bound(py)),
+            None => Err(PyValueError::new_err("no coefficient")),
+        }
+    }
 }
 
 #[pymethods]

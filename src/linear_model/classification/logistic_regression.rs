@@ -2,6 +2,7 @@ use rand_chacha::ChaCha20Rng;
 
 use core::{hash::Hash, ops::Sub};
 use num_traits::Float;
+use std::fmt::format;
 
 use crate::solver::batch_gradient_descent;
 use crate::traits::Algebra;
@@ -29,7 +30,7 @@ pub struct LogisticRegressionParameter<C, I> {
     pub intercept: Option<I>,
 }
 
-/// Hyperparameters used in a linear classification model.
+/// Hyperparameters used in a logistic regression model.
 #[derive(Debug, Clone, Copy)]
 pub struct LogisticRegressionSettings<T> {
     /// If it is `true` then the model fits with an intercept, `false`
@@ -140,7 +141,11 @@ impl<'a, T: Scalar, L: Label> Model<'a> for LogisticRegression<Array2<T>, Array1
                     &self.internal,
                 ))
             }
-            _ => return Err(NjangError::NotSupported { item: "Solver" }),
+            _ => {
+                return Err(NjangError::NotSupported {
+                    item: format!("Solver {:?}", self.settings.solver),
+                })
+            }
         };
         Ok(())
     }

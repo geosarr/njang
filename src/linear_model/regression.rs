@@ -225,7 +225,9 @@ macro_rules! impl_regression {
                         }
                     }
                 } else {
-                    return Err(NjangError::NotSupported { item: "Solver" });
+                    return Err(NjangError::NotSupported {
+                        item: format!("Solver {:?}", self.settings.solver),
+                    });
                 }
             }
 
@@ -250,7 +252,9 @@ macro_rules! impl_regression {
                                 Err(error) => return Err(NjangError::Linalg(error)),
                             })
                         } else {
-                            return Err(NjangError::NotSupported { item: "Solver" });
+                            return Err(NjangError::NotSupported {
+                                item: format!("Solver {:?}", self.settings.solver),
+                            });
                         }
                     }
                     LinearModelSolver::Exact => self.linalg_solve(x, y, exact),
@@ -354,7 +358,7 @@ macro_rules! impl_regression {
             type Data = (&'a Array2<T>, &'a Array<T, $ix>);
             fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
                 let (x, y) = data;
-                let (xlen, ylen) = (x.nrows(), y.len());
+                let (xlen, ylen) = (x.nrows(), y.shape()[0]);
                 if xlen != ylen {
                     return Err(NjangError::NotMatchedLength { xlen, ylen });
                 }

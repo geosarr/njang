@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 mod linear_model;
-use linear_model::{LinearRegression, RidgeRegression};
+use linear_model::{LinearRegression, LogisticRegression, RidgeRegression};
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -14,5 +14,6 @@ fn njang(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_class::<LinearRegression>().unwrap();
     m.add_class::<RidgeRegression>().unwrap();
+    m.add_class::<LogisticRegression>().unwrap();
     Ok(())
 }
