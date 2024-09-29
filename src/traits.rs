@@ -70,8 +70,10 @@ impl_label!(
 pub trait Container {
     type Elem;
     type SelectionOutput;
+    type LenghtOutput;
     fn dimension(&self) -> &[usize];
     fn selection(&self, axis: usize, indices: &[usize]) -> Self::SelectionOutput;
+    fn length(&self) -> Self::LenghtOutput;
 }
 
 impl<S, D> Container for ArrayBase<S, D>
@@ -82,13 +84,44 @@ where
 {
     type Elem = S::Elem;
     type SelectionOutput = Array<S::Elem, D>;
+    type LenghtOutput = usize;
     fn dimension(&self) -> &[usize] {
         Self::shape(&self)
     }
     fn selection(&self, axis: usize, indices: &[usize]) -> Self::SelectionOutput {
         Self::select(self, Axis(axis), indices)
     }
+    fn length(&self) -> Self::LenghtOutput {
+        self.len()
+    }
 }
+
+macro_rules! impl_container_arr(
+    ( $( $n:literal ),* )=> {
+        $(
+            impl<T: Copy> Container for [T; $n] {
+                type Elem = T;
+                type SelectionOutput = Vec<T>;
+                type LenghtOutput = usize;
+                fn dimension(&self) -> &[usize] {
+                    &[$n]
+                }
+                fn selection(&self, _axis: usize, indices: &[usize]) -> Self::SelectionOutput {
+                    let mut res = Vec::with_capacity(indices.len());
+                    for idx in indices {
+                        res.push(self[*idx]);
+                    }
+                    res
+                }
+                fn length(&self) -> Self::LenghtOutput {
+                    self.len()
+                }
+            }
+        )*
+    }
+);
+
+impl_container_arr!(1, 2, 3);
 
 /// Trait implementing operations on modelling data structures.
 pub trait Algebra: Container {
