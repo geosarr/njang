@@ -88,18 +88,18 @@ impl<K, V> Node<K, V> {
     }
 }
 
-///// Implementation of a Kd-tree
-///// # Example
-///// ```
-///// use njang::KdTree;
-///// let mut bt = KdTree::new();
-///// bt.insert([0], "1");
-///// bt.insert([1], "2");
-///// bt.insert([2], "3");
-///// assert_eq!(bt.len(), 3);
-///// assert!(bt.contains(&[0]));
-///// assert_eq!(bt.get(&[2]), Some(&"3"));
-///// ```
+/// Implementation of a Kd-tree
+/// # Example
+/// ```
+/// use njang::KdTree;
+/// let mut bt = KdTree::new();
+/// bt.insert([0], "1");
+/// bt.insert([1], "2");
+/// bt.insert([2], "3");
+/// assert_eq!(bt.len(), 3);
+/// assert!(bt.contains(&[0]));
+/// assert_eq!(bt.get(&[2]), Some(&"3"));
+/// ```
 #[derive(Debug, Clone)]
 pub struct KdTree<K, V>
 where
@@ -215,11 +215,11 @@ where
             None => *node = Some(Box::new(Node::init(key, value))),
             Some(ref mut nod) => match key[*level].partial_cmp(&nod.key[*level]) {
                 Some(Ordering::Less) => {
-                    *level += 1;
+                    *level = (*level + 1) % key.length();
                     return Self::put(&mut nod.left, key, value, level);
                 }
                 Some(Ordering::Greater) => {
-                    *level += 1;
+                    *level += (*level + 1) % key.length();
                     return Self::put(&mut nod.right, key, value, level);
                 }
                 Some(Ordering::Equal) => {
