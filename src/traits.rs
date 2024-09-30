@@ -66,7 +66,7 @@ impl_label!(
     &'static str
 );
 
-/// Base trait handling the modelling data structures.
+/// Base trait handling the modeling data structures.
 pub trait Container {
     type Elem;
     type SelectionOutput;
@@ -120,10 +120,9 @@ macro_rules! impl_container_arr(
         )*
     }
 );
-
 impl_container_arr!(1, 2, 3);
 
-/// Trait implementing operations on modelling data structures.
+/// Trait implementing operations on modeling data structures.
 pub trait Algebra: Container {
     type MeanAxisOutput;
     type PowiOutput;
@@ -132,6 +131,7 @@ pub trait Algebra: Container {
     fn powi(&self, n: i32) -> Self::PowiOutput;
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
     fn l2_norm(&self) -> Self::Elem;
+    fn squared_l2_norm(&self) -> Self::Elem;
     fn linf_norm(&self) -> Self::Elem;
     fn sign(&self) -> Self::SignOutput;
     fn softmax(&self, max: Option<Self::Elem>, axis: usize) -> Self::SoftmaxOutput;
@@ -154,7 +154,10 @@ where
         Self::mean_axis(self, Axis(axis)).unwrap()
     }
     fn l2_norm(&self) -> S::Elem {
-        self.powi(2).sum().sqrt()
+        self.squared_l2_norm().sqrt()
+    }
+    fn squared_l2_norm(&self) -> Self::Elem {
+        self.powi(2).sum()
     }
     fn linf_norm(&self) -> S::Elem {
         let mut norm = S::Elem::zero();
