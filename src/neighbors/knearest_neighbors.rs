@@ -1,9 +1,11 @@
 use ndarray::*;
+use rand_chacha::{ChaCha20Core, ChaCha20Rng};
 
 use core::{
     cmp::Ordering,
     ops::{Index, Mul, Sub},
 };
+// use std::collections::BinaryHeap;
 
 use crate::{
     error::NjangError,
@@ -182,7 +184,7 @@ where
                     return Self::put(&mut nod.left, key, value, level);
                 }
                 Some(Ordering::Greater) => {
-                    *level += (*level + 1) % key.length();
+                    *level = (*level + 1) % key.length();
                     return Self::put(&mut nod.right, key, value, level);
                 }
                 Some(Ordering::Equal) => {
@@ -193,7 +195,7 @@ where
                     // return Some(nod);
 
                     // Possibility to put key and value in the left branch also.
-                    *level += (*level + 1) % key.length();
+                    *level = (*level + 1) % key.length();
                     return Self::put(&mut nod.right, key, value, level);
                 }
                 None => return None, //panic!("Unknown situation"),
@@ -219,7 +221,7 @@ where
         //     self.len += 1;
         // }
     }
-    pub fn nearest_neighbor(&self, key: &K) -> Option<Box<Node<K, V>>>
+    pub fn nearest_neighbor(&self, key: &K) -> Option<&Box<Node<K, V>>>
     where
         K: Algebra<Elem = K::Output, LenghtOutput = usize> + Clone,
         V: Clone,
@@ -235,16 +237,16 @@ where
 /// Adapted from [this youtube channel][br].
 ///
 /// [br]: https://www.youtube.com/watch?v=Glp7THUpGow
-fn nearest_neighbor<K, V>(
-    node: &Option<Box<Node<K, V>>>,
+fn nearest_neighbor<'a, K, V>(
+    node: &'a Option<Box<Node<K, V>>>,
     key: &K,
     level: usize,
-) -> Option<Box<Node<K, V>>>
+) -> Option<&'a Box<Node<K, V>>>
 where
     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Clone,
     V: Clone,
     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem>,
-    for<'a> &'a K: Sub<&'a K, Output = K>,
+    for<'b> &'b K: Sub<&'b K, Output = K>,
 {
     if let Some(nod) = node {
         let coordinate = level % key.length();
@@ -255,7 +257,7 @@ where
         };
         let temp = nearest_neighbor(next, &key, level + 1);
         // Closest point to `key` between current node key and nearest temp node key.
-        let mut best = if let Some(ref tmp_node) = temp {
+        let mut best = if let Some(tmp_node) = temp {
             if (&tmp_node.key - &key).l2_norm() < (&nod.key - &key).l2_norm() {
                 tmp_node
             } else {
@@ -268,17 +270,64 @@ where
         let dist = key[coordinate] - nod.key[coordinate];
         if radius_squared >= dist * dist {
             let temp = nearest_neighbor(other, &key, level + 1);
-            if let Some(ref tmp_node) = temp {
+            if let Some(tmp_node) = temp {
                 if (&tmp_node.key - &key).l2_norm() < (&best.key - &key).l2_norm() {
-                    return Some(tmp_node.clone());
+                    return Some(tmp_node);
                 }
             };
         }
-        return Some(best.clone());
+        return Some(best);
     } else {
         return None;
     };
 }
+
+// fn k_nearest_neighbors<'a, K, V>(
+//     k: usize,
+//     node: &'a Option<Box<Node<K, V>>>,
+//     key: &K,
+//     level: usize,
+//     heap: &mut BinaryHeap<(&'a Box<Node<K, V>>, K::Elem)>,
+// ) -> Option<&'a Box<Node<K, V>>>
+// where
+//     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> +
+// Clone,     V: Clone,
+//     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output =
+// K::Elem>,     for<'b> &'b K: Sub<&'b K, Output = K>,
+// {
+//     if let Some(nod) = node {
+//         let coordinate = level % key.length();
+//         let (next, other) = if key[coordinate] < nod.key[coordinate] {
+//             (&nod.left, &nod.right)
+//         } else {
+//             (&nod.right, &nod.left)
+//         };
+//         let temp = k_nearest_neighbors(k, next, &key, level + 1, heap);
+//         // Closest point to `key` between current node key and nearest temp
+// node key.         let mut best = if let Some(tmp_node) = temp {
+//             if (&tmp_node.key - &key).l2_norm() < (&nod.key - &key).l2_norm()
+// {                 tmp_node
+//             } else {
+//                 nod
+//             }
+//         } else {
+//             nod
+//         };
+//         let radius_squared = (&best.key - key).squared_l2_norm();
+//         let dist = key[coordinate] - nod.key[coordinate];
+//         if radius_squared >= dist * dist {
+//             let temp = nearest_neighbor(other, &key, level + 1);
+//             if let Some(tmp_node) = temp {
+//                 if (&tmp_node.key - &key).l2_norm() < (&best.key -
+// &key).l2_norm() {                     return Some(tmp_node);
+//                 }
+//             };
+//         }
+//         return Some(best);
+//     } else {
+//         return None;
+//     };
+// }
 
 #[test]
 fn partial() {
@@ -287,7 +336,7 @@ fn partial() {
     bt.insert(array![2., 6.], 3);
     bt.insert(array![13., 3.], 4);
     bt.insert(array![3., 1.], 0);
-    // bt.insert(array![10., 2.], 0);
+    bt.insert(array![10., 2.], 0);
     bt.insert(array![8., 7.], 0);
     println!("{:?}", bt.len());
     println!("{:#?}\n", bt);
@@ -295,4 +344,25 @@ fn partial() {
         "{:#?}",
         nearest_neighbor(&bt.root, &array![9., 4.], 0).unwrap().key
     );
+    // use std::collections::BinaryHeap;
+
+    use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix1, Ix2};
+    use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
+    // use ndarray_rand::rand::SeedableRng;
+    use ndarray_rand::{
+        rand::{Rng, SeedableRng},
+        rand_distr::{uniform::SampleUniform, Uniform},
+        RandomExt,
+    };
+    let mut rng = ChaCha20Rng::seed_from_u64(0);
+    const N: usize = 100000;
+    const P: usize = 10;
+    let a = Array2::<f32>::random_using((N, P), Uniform::new(0., 1.), &mut rng);
+    let mut bt = KdTree::<_, usize>::new();
+    a.axis_iter(Axis(0))
+        .map(|row| bt.insert(row.to_owned(), 0))
+        .for_each(drop);
+    let key = Array1::from_iter((0..P).map(|x| x as f32).collect::<Vec<_>>()); //.view();
+    println!("{:#?}", bt.nearest_neighbor(&key).unwrap().key);
+    println!("{:#?}", bt.len);
 }

@@ -120,7 +120,6 @@ impl<T> LinearModelInternal<T> {
         }
     }
 }
-// impl_settings!(ModelInternal);
 
 pub(crate) fn exact<T, Y>(x: Array2<T>, z: ArrayView2<T>, y: &Y) -> Result<Y, LinalgError>
 where
