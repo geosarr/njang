@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 mod linear_model;
+mod neighbors;
 use linear_model::{LinearRegression, LogisticRegression, RidgeRegression};
+use neighbors::KDTree;
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -15,5 +17,6 @@ fn njang(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LinearRegression>().unwrap();
     m.add_class::<RidgeRegression>().unwrap();
     m.add_class::<LogisticRegression>().unwrap();
+    m.add_class::<KDTree>().unwrap();
     Ok(())
 }

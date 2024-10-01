@@ -75,11 +75,11 @@ fn knn() {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Node<K, V> {
-    key: K,
-    value: V,
-    left: Option<Box<Node<K, V>>>,
-    right: Option<Box<Node<K, V>>>,
+pub struct Node<K, V> {
+    pub key: K,
+    pub value: V,
+    pub left: Option<Box<Node<K, V>>>,
+    pub right: Option<Box<Node<K, V>>>,
 }
 
 impl<K, V> Node<K, V> {
@@ -110,8 +110,8 @@ pub struct KdTree<K, V>
 where
     K: Container,
 {
-    root: Option<Box<Node<K, V>>>,
-    len: usize,
+    pub root: Option<Box<Node<K, V>>>,
+    pub len: usize,
 }
 impl<K: Container, V> Default for KdTree<K, V> {
     fn default() -> Self {
