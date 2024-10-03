@@ -84,10 +84,10 @@ struct Node<K> {
 }
 
 impl<K> Node<K> {
-    pub fn new(key: K) -> Self {
+    pub fn new(key: K, number: usize) -> Self {
         Self {
             key,
-            number: 0,
+            number,
             left: None,
             right: None,
         }
@@ -139,7 +139,7 @@ impl<K: Container> KdTree<K> {
     /// ```
     pub fn init(key: K) -> Self {
         Self {
-            root: Some(Box::new(Node::new(key))),
+            root: Some(Box::new(Node::new(key, 0))),
             len: 1,
         }
     }
@@ -174,18 +174,19 @@ where
     fn put<'a>(
         node: &mut Option<Box<Node<K>>>,
         key: K,
+        number: usize,
         level: &'a mut usize,
     ) -> Option<&'a mut Box<Node<K>>> {
         match node {
-            None => *node = Some(Box::new(Node::new(key))),
+            None => *node = Some(Box::new(Node::new(key, number))),
             Some(ref mut nod) => match key[*level].partial_cmp(&nod.key[*level]) {
                 Some(Ordering::Less) => {
                     *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.left, key, level);
+                    return Self::put(&mut nod.left, key, number, level);
                 }
                 Some(Ordering::Greater) => {
                     *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.right, key, level);
+                    return Self::put(&mut nod.right, key, number, level);
                 }
                 Some(Ordering::Equal) => {
                     // Used to overwrite the current node's value, but doing so would change
@@ -196,7 +197,7 @@ where
 
                     // Possibility to put key and value in the left branch also.
                     *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.right, key, level);
+                    return Self::put(&mut nod.right, key, number, level);
                 }
                 None => return None, //panic!("Unknown situation"),
             },
@@ -215,7 +216,7 @@ where
     /// ```
     pub fn insert(&mut self, key: K) {
         let mut level = 0;
-        Self::put(&mut self.root, key, &mut level);
+        Self::put(&mut self.root, key, self.len, &mut level);
         self.len += 1;
     }
     /// Searches the nearest neighbor of a `key` in the tree.
