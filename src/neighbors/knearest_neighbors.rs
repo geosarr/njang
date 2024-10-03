@@ -282,87 +282,116 @@ where
     };
 }
 
-// fn k_nearest_neighbors<'a, K, V>(
-//     k: usize,
-//     node: &'a Option<Box<Node<K, V>>>,
-//     key: &K,
-//     level: usize,
-//     heap: &mut BinaryHeap<(&'a Box<Node<K, V>>, K::Elem)>,
-// ) -> Option<&'a Box<Node<K, V>>>
-// where
-//     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> +
-// Clone,     V: Clone,
-//     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output =
-// K::Elem>,     for<'b> &'b K: Sub<&'b K, Output = K>,
-// {
-//     if let Some(nod) = node {
-//         let coordinate = level % key.length();
-//         let (next, other) = if key[coordinate] < nod.key[coordinate] {
-//             (&nod.left, &nod.right)
-//         } else {
-//             (&nod.right, &nod.left)
-//         };
-//         let temp = k_nearest_neighbors(k, next, &key, level + 1, heap);
-//         // Closest point to `key` between current node key and nearest temp
-// node key.         let mut best = if let Some(tmp_node) = temp {
-//             if (&tmp_node.key - &key).l2_norm() < (&nod.key - &key).l2_norm()
-// {                 tmp_node
-//             } else {
-//                 nod
-//             }
-//         } else {
-//             nod
-//         };
-//         let radius_squared = (&best.key - key).squared_l2_norm();
-//         let dist = key[coordinate] - nod.key[coordinate];
-//         if radius_squared >= dist * dist {
-//             let temp = nearest_neighbor(other, &key, level + 1);
-//             if let Some(tmp_node) = temp {
-//                 if (&tmp_node.key - &key).l2_norm() < (&best.key -
-// &key).l2_norm() {                     return Some(tmp_node);
-//                 }
-//             };
-//         }
-//         return Some(best);
-//     } else {
-//         return None;
-//     };
-// }
+#[derive(Debug)]
+pub struct Tree<T> {
+    vec: Vec<Option<T>>,
+    len: usize,
+}
 
+impl<T> Tree<T> {
+    pub fn with_capacity(n: usize) -> Self {
+        let mut vec = Vec::with_capacity(n);
+        for _ in 0..n {
+            vec.push(None);
+        }
+        Self { vec, len: 0 }
+    }
+    pub fn new(key: T) -> Self {
+        let mut vec = Vec::new();
+        vec.push(Some(key));
+        Self { vec, len: 1 }
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    fn double(&mut self) {
+        // run time complexity O(N)
+        // doubling the size of the priority queue
+        let mut vector = Vec::with_capacity(self.vec.len());
+        for _ in 0..self.vec.len() {
+            vector.push(None);
+        }
+        self.vec.append(&mut vector);
+    }
+}
+
+impl<K> Tree<K>
+where
+    K: Index<usize> + Container<LenghtOutput = usize>,
+    K::Output: PartialOrd + Copy,
+{
+    fn put(tree: &mut Vec<Option<K>>, idx: usize, key: K, level: usize, dim: usize) {
+        if idx >= tree.len() {
+            tree.resize_with(idx + 1, || None);
+        }
+        if let Some(ref node) = tree[idx] {
+            match key[level].partial_cmp(&node[level]) {
+                Some(Ordering::Less) => Self::put(tree, 2 * idx + 1, key, (level + 1) % dim, dim),
+                Some(Ordering::Greater) => {
+                    Self::put(tree, 2 * idx + 2, key, (level + 1) % dim, dim)
+                }
+                Some(Ordering::Equal) => Self::put(tree, 2 * idx + 2, key, (level + 1) % dim, dim),
+                None => (), // should panic!("") ?
+            };
+        } else {
+            tree[idx] = Some(key);
+        }
+    }
+    pub fn insert(&mut self, key: K) {
+        let dim = key.length();
+        Self::put(&mut self.vec, 0, key, 0, dim);
+        self.len += 1;
+    }
+}
 #[test]
 fn partial() {
-    let mut bt = KdTree::<_, usize>::new();
-    bt.insert(array![5., 4.], 2);
-    bt.insert(array![2., 6.], 3);
-    bt.insert(array![13., 3.], 4);
-    bt.insert(array![3., 1.], 0);
-    bt.insert(array![10., 2.], 0);
-    bt.insert(array![8., 7.], 0);
+    let mut bt = Tree::<_>::with_capacity(8);
+    bt.insert(array![5., 4.]);
+    bt.insert(array![2., 6.]);
+    bt.insert(array![13., 3.]);
+    bt.insert(array![3., 1.]);
+    bt.insert(array![10., 2.]);
+    bt.insert(array![8., 7.]);
+    bt.insert(array![8., 7.]);
     println!("{:?}", bt.len());
     println!("{:#?}\n", bt);
-    println!(
-        "{:#?}",
-        nearest_neighbor(&bt.root, &array![9., 4.], 0).unwrap().key
-    );
+    // println!(
+    //     "{:#?}",
+    //     nearest_neighbor(&bt.root, &array![9., 4.], 0).unwrap().key
+    // );
+
+    // let mut bt = KdTree::<_, usize>::new();
+    // bt.insert(array![5., 4.], 2);
+    // bt.insert(array![2., 6.], 3);
+    // bt.insert(array![13., 3.], 4);
+    // bt.insert(array![3., 1.], 0);
+    // bt.insert(array![10., 2.], 0);
+    // bt.insert(array![8., 7.], 0);
+    // println!("{:?}", bt.len());
+    // println!("{:#?}\n", bt);
+    // println!(
+    //     "{:#?}",
+    //     nearest_neighbor(&bt.root, &array![9., 4.], 0).unwrap().key
+    // );
     // use std::collections::BinaryHeap;
 
-    use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix1, Ix2};
-    use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR, UPLO};
-    // use ndarray_rand::rand::SeedableRng;
-    use ndarray_rand::{
-        rand::{Rng, SeedableRng},
-        rand_distr::{uniform::SampleUniform, Uniform},
-        RandomExt,
-    };
-    let mut rng = ChaCha20Rng::seed_from_u64(0);
-    const N: usize = 100000;
-    const P: usize = 10;
-    let a = Array2::<f32>::random_using((N, P), Uniform::new(0., 1.), &mut rng);
-    let mut bt = KdTree::<_, usize>::new();
-    a.axis_iter(Axis(0))
-        .map(|row| bt.insert(row.to_owned(), 0))
-        .for_each(drop);
-    let key = Array1::from_iter((0..P).map(|x| x as f32).collect::<Vec<_>>()); //.view();
-    println!("{:#?}", bt.nearest_neighbor(&key).unwrap().key);
-    println!("{:#?}", bt.len);
+    // use ndarray::{linalg::Dot, Array, Array2, ArrayView2, Ix1, Ix2};
+    // use ndarray_linalg::{error::LinalgError, Cholesky, Inverse, Lapack, QR,
+    // UPLO}; // use ndarray_rand::rand::SeedableRng;
+    // use ndarray_rand::{
+    //     rand::{Rng, SeedableRng},
+    //     rand_distr::{uniform::SampleUniform, Uniform},
+    //     RandomExt,
+    // };
+    // let mut rng = ChaCha20Rng::seed_from_u64(0);
+    // const N: usize = 100000;
+    // const P: usize = 10;
+    // let a = Array2::<f32>::random_using((N, P), Uniform::new(0., 1.), &mut
+    // rng); let mut bt = KdTree::<_, usize>::new();
+    // a.axis_iter(Axis(0))
+    //     .map(|row| bt.insert(row.to_owned(), 0))
+    //     .for_each(drop);
+    // let key = Array1::from_iter((0..P).map(|x| x as
+    // f32).collect::<Vec<_>>()); //.view(); println!("{:#?}",
+    // bt.nearest_neighbor(&key).unwrap().key); println!("{:#?}", bt.len);
 }
