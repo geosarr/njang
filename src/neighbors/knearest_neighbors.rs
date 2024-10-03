@@ -76,18 +76,18 @@ fn knn() {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Node<K, V> {
-    pub key: K,
-    pub value: V,
-    pub left: Option<Box<Node<K, V>>>,
-    pub right: Option<Box<Node<K, V>>>,
+struct Node<K> {
+    key: K,
+    number: usize,
+    left: Option<Box<Node<K>>>,
+    right: Option<Box<Node<K>>>,
 }
 
-impl<K, V> Node<K, V> {
-    pub fn init(key: K, value: V) -> Self {
+impl<K> Node<K> {
+    pub fn new(key: K) -> Self {
         Self {
             key,
-            value,
+            number: 0,
             left: None,
             right: None,
         }
@@ -101,30 +101,30 @@ impl<K, V> Node<K, V> {
 /// ```
 /// use njang::KdTree;
 /// let mut bt = KdTree::new();
-/// bt.insert([0], "1");
-/// bt.insert([1], "2");
-/// bt.insert([2], "3");
+/// bt.insert([0]);
+/// bt.insert([1]);
+/// bt.insert([2]);
 /// assert_eq!(bt.len(), 3);
 /// ```
 #[derive(Debug, Clone)]
-pub struct KdTree<K, V>
+pub struct KdTree<K>
 where
     K: Container,
 {
-    pub root: Option<Box<Node<K, V>>>,
+    pub root: Option<Box<Node<K>>>,
     pub len: usize,
 }
-impl<K: Container, V> Default for KdTree<K, V> {
+impl<K: Container> Default for KdTree<K> {
     fn default() -> Self {
         Self::new()
     }
 }
-impl<K: Container, V> KdTree<K, V> {
+impl<K: Container> KdTree<K> {
     /// Creates an empty tree instance.
     /// # Example
     /// ```
     /// use njang::KdTree;
-    /// let bt = KdTree::<[usize; 1], isize>::new();
+    /// let bt = KdTree::<[usize; 1]>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
     pub fn new() -> Self {
@@ -134,12 +134,12 @@ impl<K: Container, V> KdTree<K, V> {
     /// # Example
     /// ```
     /// use njang::KdTree;
-    /// let bt = KdTree::init(["btree"], 0);
+    /// let bt = KdTree::init(["btree"]);
     /// assert_eq!(bt.len(), 1);
     /// ```
-    pub fn init(key: K, value: V) -> Self {
+    pub fn init(key: K) -> Self {
         Self {
-            root: Some(Box::new(Node::init(key, value))),
+            root: Some(Box::new(Node::new(key))),
             len: 1,
         }
     }
@@ -147,7 +147,7 @@ impl<K: Container, V> KdTree<K, V> {
     /// # Example
     /// ```
     /// use njang::KdTree;
-    /// let bt = KdTree::<[f32; 2], f32>::new();
+    /// let bt = KdTree::<[f32; 2]>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
     pub fn len(&self) -> usize {
@@ -158,7 +158,7 @@ impl<K: Container, V> KdTree<K, V> {
     /// ```
     /// use njang::KdTree;
     /// let mut bt = KdTree::new();
-    /// bt.insert([1], 1);
+    /// bt.insert([1]);
     /// assert!(!bt.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -166,27 +166,26 @@ impl<K: Container, V> KdTree<K, V> {
     }
 }
 
-impl<K, V> KdTree<K, V>
+impl<K> KdTree<K>
 where
     K: Index<usize> + Container<LenghtOutput = usize>,
     K::Output: PartialOrd + Copy,
 {
     fn put<'a>(
-        node: &mut Option<Box<Node<K, V>>>,
+        node: &mut Option<Box<Node<K>>>,
         key: K,
-        value: V,
         level: &'a mut usize,
-    ) -> Option<&'a mut Box<Node<K, V>>> {
+    ) -> Option<&'a mut Box<Node<K>>> {
         match node {
-            None => *node = Some(Box::new(Node::init(key, value))),
+            None => *node = Some(Box::new(Node::new(key))),
             Some(ref mut nod) => match key[*level].partial_cmp(&nod.key[*level]) {
                 Some(Ordering::Less) => {
                     *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.left, key, value, level);
+                    return Self::put(&mut nod.left, key, level);
                 }
                 Some(Ordering::Greater) => {
                     *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.right, key, value, level);
+                    return Self::put(&mut nod.right, key, level);
                 }
                 Some(Ordering::Equal) => {
                     // Used to overwrite the current node's value, but doing so would change
@@ -197,7 +196,7 @@ where
 
                     // Possibility to put key and value in the left branch also.
                     *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.right, key, value, level);
+                    return Self::put(&mut nod.right, key, level);
                 }
                 None => return None, //panic!("Unknown situation"),
             },
@@ -209,23 +208,24 @@ where
     /// # Example
     /// ```
     /// use njang::KdTree;
-    /// let mut bt = KdTree::<[isize; 1], usize>::new();
-    /// bt.insert([-1], 2);
-    /// bt.insert([-2], 3);
+    /// let mut bt = KdTree::<[isize; 1]>::new();
+    /// bt.insert([-1]);
+    /// bt.insert([-2]);
     /// assert_eq!(bt.len(), 2);
     /// ```
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: K) {
         let mut level = 0;
-        Self::put(&mut self.root, key, value, &mut level);
+        Self::put(&mut self.root, key, &mut level);
         self.len += 1;
-        // if Self::put(&mut self.root, key, value, &mut level).is_none() {
-        //     self.len += 1;
-        // }
     }
+    /// Searches the nearest neighbor of a `key` in the tree.
+    ///
+    /// Adapted from [this youtube channel][br].
+    ///
+    /// [br]: https://www.youtube.com/watch?v=Glp7THUpGow
     pub fn nearest_neighbor(&self, key: &K) -> Option<&K>
     where
         K: Algebra<Elem = K::Output, LenghtOutput = usize> + Debug,
-        V: Clone + Debug,
         K::Output: Sub<Output = K::Output> + Mul<Output = K::Output> + Debug,
         for<'a> &'a K: Sub<&'a K, Output = K>,
     {
@@ -239,13 +239,8 @@ where
     }
 }
 
-/// Searches the nearest neighbor in a Kd-tree.
-///
-/// Adapted from [this youtube channel][br].
-///
-/// [br]: https://www.youtube.com/watch?v=Glp7THUpGow
-fn nearest_neighbor<'a, K, V>(
-    node: &'a Option<Box<Node<K, V>>>,
+fn nearest_neighbor<'a, K>(
+    node: &'a Option<Box<Node<K>>>,
     key: &K,
     mut best_key: &'a K,
     mut best_squared_dist: K::Elem,
@@ -253,7 +248,6 @@ fn nearest_neighbor<'a, K, V>(
 ) -> (&'a K, K::Elem)
 where
     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
-    V: Clone + Debug,
     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
     for<'b> &'b K: Sub<&'b K, Output = K>,
 {
@@ -285,13 +279,13 @@ where
 
 #[test]
 fn partial() {
-    let mut bt = KdTree::<_, usize>::new();
-    bt.insert(array![5., 4.], 2);
-    bt.insert(array![2., 6.], 3);
-    bt.insert(array![13., 3.], 4);
-    bt.insert(array![3., 1.], 0);
-    bt.insert(array![10., 2.], 0);
-    bt.insert(array![8., 7.], 0);
+    let mut bt = KdTree::<_>::new();
+    bt.insert(array![5., 4.]);
+    bt.insert(array![2., 6.]);
+    bt.insert(array![13., 3.]);
+    bt.insert(array![3., 1.]);
+    bt.insert(array![10., 2.]);
+    bt.insert(array![8., 7.]);
     println!("{:?}", bt.len());
     println!("{:#?}\n", bt);
     println!("{:#?}", bt.nearest_neighbor(&array![9., 4.]).unwrap());
