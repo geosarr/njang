@@ -27,8 +27,8 @@ impl KDTree {
         key: PyReadonlyArray1<f64>,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        if let Some(ref node) = self.tree.nearest_neighbor(&key.as_array().to_owned()) {
-            Ok(node.key.clone().into_pyarray_bound(py))
+        if let Some(key) = self.tree.nearest_neighbor(&key.as_array().to_owned()) {
+            Ok(key.clone().into_pyarray_bound(py))
         } else {
             Err(PyValueError::new_err("no nearest neighbor"))
         }
