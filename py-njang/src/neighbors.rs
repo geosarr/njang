@@ -2,11 +2,11 @@ use ndarray::{Array0, Array1, Array2, Axis};
 use njang::KdTree;
 
 use numpy::{IntoPyArray, PyArray0, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::{exceptions::PyValueError, prelude::*};
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyList};
 
 #[pyclass]
 pub struct KDTree {
-    tree: KdTree<Array1<f64>, f64>,
+    tree: KdTree<Array1<f64>>,
 }
 
 #[pymethods]
@@ -17,20 +17,26 @@ impl KDTree {
         let x = x.as_array();
         let y = y.as_array();
         x.axis_iter(Axis(0))
-            .enumerate()
-            .map(|(i, row)| tree.insert(row.to_owned(), y[i]))
+            .map(|row| tree.insert(row.to_owned()))
             .for_each(drop);
         Ok(Self { tree })
     }
-    pub fn nearest_neighbor<'py>(
+    pub fn k_nearest_neighbors(
         &self,
         key: PyReadonlyArray1<f64>,
-        py: Python<'py>,
-    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        if let Some(key) = self.tree.nearest_neighbor(&key.as_array().to_owned()) {
-            Ok(key.clone().into_pyarray_bound(py))
+        k: isize,
+    ) -> PyResult<Vec<(usize, f64)>> {
+        if k >= 0 {
+            if let Some(result) = self
+                .tree
+                .k_nearest_neighbors(&key.as_array().to_owned(), k as usize)
+            {
+                Ok(result)
+            } else {
+                Err(PyValueError::new_err("no nearest neighbors"))
+            }
         } else {
-            Err(PyValueError::new_err("no nearest neighbor"))
+            Err(PyValueError::new_err("`k` should be >= 0"))
         }
     }
 }

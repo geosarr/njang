@@ -6,6 +6,7 @@ use core::{
     fmt::Debug,
     ops::{Index, Mul, Sub},
 };
+use std::collections::HashSet;
 // use std::collections::BinaryHeap;
 
 use crate::{
@@ -13,6 +14,8 @@ use crate::{
     traits::{Algebra, Container, Label, Model, Scalar},
     ClassificationModel,
 };
+
+use core::mem::replace;
 
 enum KnnSolver {
     Brute,
@@ -224,29 +227,53 @@ where
     /// Adapted from [this youtube channel][br].
     ///
     /// [br]: https://www.youtube.com/watch?v=Glp7THUpGow
-    pub fn nearest_neighbor(&self, key: &K) -> Option<&K>
+    pub fn k_nearest_neighbors(&self, key: &K, k: usize) -> Option<Vec<(usize, K::Elem)>>
     where
-        K: Algebra<Elem = K::Output, LenghtOutput = usize> + Debug,
-        K::Output: Sub<Output = K::Output> + Mul<Output = K::Output> + Debug,
-        for<'a> &'a K: Sub<&'a K, Output = K>,
+        K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
+        K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
+        for<'b> &'b K: Sub<&'b K, Output = K>,
     {
-        let (best_squared_dist, best_key) = if let Some(ref root) = self.root {
-            ((&root.key - key).squared_l2_norm(), &root.key)
+        let best_squared_dist = if let Some(ref root) = self.root {
+            (&root.key - key).squared_l2_norm()
         } else {
             return None;
         };
-        let result = nearest_neighbor(&self.root, key, best_key, best_squared_dist, 0);
-        Some(result.0)
+        let mut the_bests = HashSet::with_capacity(k + 1);
+        let mut the_bests_with_dist = Vec::with_capacity(k + 1);
+        for i in 0..k {
+            the_bests_with_dist.push(k_nearest_neighbors(
+                &self.root,
+                key,
+                0,
+                best_squared_dist,
+                0,
+                &the_bests,
+            ));
+            the_bests.insert(the_bests_with_dist.last().unwrap().0);
+        }
+        Some(the_bests_with_dist)
     }
 }
 
-fn nearest_neighbor<'a, K>(
+#[derive(Debug, PartialEq)]
+pub struct KthNearestNeighbor<D> {
+    number: usize,
+    dist: D,
+}
+impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.dist.partial_cmp(&other.dist)
+    }
+}
+
+fn k_nearest_neighbors<'a, K>(
     node: &'a Option<Box<Node<K>>>,
     key: &K,
-    mut best_key: &'a K,
+    mut best_key: usize,
     mut best_squared_dist: K::Elem,
     level: usize,
-) -> (&'a K, K::Elem)
+    the_bests: &HashSet<usize>,
+) -> (usize, K::Elem)
 where
     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
@@ -259,23 +286,295 @@ where
         } else {
             (&nod.right, &nod.left)
         };
-        let (mut best, mut best_squared_dist) =
-            nearest_neighbor(next, &key, best_key, best_squared_dist, level + 1);
+        let (mut best, mut best_squared_dist) = k_nearest_neighbors(
+            next,
+            &key,
+            best_key,
+            best_squared_dist,
+            level + 1,
+            the_bests,
+        );
         let dist = key[coordinate] - nod.key[coordinate];
-        if dist * dist <= best_squared_dist {
+        if (dist * dist <= best_squared_dist) & !the_bests.contains(&nod.number) {
             let radius_squared = (&nod.key - key).squared_l2_norm();
             if radius_squared < best_squared_dist {
                 best_squared_dist = radius_squared;
-                best = &nod.key;
+                best = nod.number;
             }
             let (temp, temp_smallest_dist) =
-                nearest_neighbor(other, &key, best, best_squared_dist, level + 1);
+                k_nearest_neighbors(other, &key, best, best_squared_dist, level + 1, the_bests);
             (best, best_squared_dist) = (temp, temp_smallest_dist);
         }
         return (best, best_squared_dist);
     } else {
         return (best_key, best_squared_dist);
     };
+}
+
+/// Defines the orientation of a binary heap (min oriented or max oriented)
+#[derive(Debug, Clone, Default)]
+pub enum HeapOrient {
+    #[default]
+    /// Max-oriented binary heap
+    Max,
+    /// Min-oriented binary heap
+    Min,
+}
+
+/// Implementation of priority queues using a `Vec` structure
+/// # Examples
+/// ```
+/// use njang::{BinaryHeap, HeapOrient};
+/// let mut bhqueue = BinaryHeap::with_capacity(3, HeapOrient::Max);
+/// assert_eq!(bhqueue.len(), 0);
+/// bhqueue.insert(0);
+/// bhqueue.insert(1);
+/// bhqueue.insert(2);
+/// assert_eq!(bhqueue.len(), 3);
+/// assert_eq!(bhqueue.delete(), Some(2));
+/// assert_eq!(bhqueue.delete(), Some(1));
+/// assert_eq!(bhqueue.len(), 1);
+/// ```
+#[derive(Debug, Default, Clone)]
+pub struct BinaryHeap<T>
+where
+    T: PartialOrd,
+{
+    // vector of objects
+    vec: Vec<Option<T>>,
+    // type of binary heap
+    kind: HeapOrient,
+    // position of the next object in the heap (or 1 + number of objects)
+    n: usize,
+    // Remarks:
+    // - objects are nodes of the tree
+    // - in the implementation objects are stored in self.vec from index = 1 to index = capacity so
+    //   that index = 0 is always None object and:
+    //     - each node k's parent is at position k/2
+    //     - each node k's children are at positions 2k and 2k+1
+    // - in the max oriented binary heap (with kind = HeapOrient::Max), parents are larger than
+    //   their children (smaller for min oriented heap)
+}
+
+impl<T: PartialOrd> BinaryHeap<T> {
+    /// Creates a new empty binary heap with an initial size.
+    /// # Panics
+    /// If `capacity = 0`, then it panics.
+    /// # Example
+    /// ```
+    /// use njang::{BinaryHeap, HeapOrient};
+    /// let bhqueue = BinaryHeap::<&str>::with_capacity(1, HeapOrient::Min);
+    /// assert_eq!(bhqueue.len(), 0);
+    /// ```
+    pub fn with_capacity(capacity: usize, k: HeapOrient) -> Self {
+        // running time complexity: O(N)
+        if capacity > 0 {
+            let mut vector = Vec::with_capacity(capacity + 1);
+            for _ in 0..capacity + 1 {
+                vector.push(None);
+            }
+
+            Self {
+                vec: vector,
+                kind: k,
+                n: 1,
+            }
+        } else {
+            panic!("capacity shoul be > 0");
+        }
+    }
+
+    /// Tests whether or not the binary heap is empty.
+    /// # Example
+    /// ```
+    /// use njang::{BinaryHeap, HeapOrient};
+    /// let mut bhqueue = BinaryHeap::<usize>::with_capacity(1, HeapOrient::Min);
+    /// bhqueue.insert(1);
+    /// assert!(!bhqueue.is_empty());
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.n == 1
+    }
+
+    /// Gives the number of objects in the binary heap.
+    /// # Example
+    /// ```
+    /// use njang::{BinaryHeap, HeapOrient};
+    /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3, HeapOrient::Min);
+    /// bhqueue.insert(-1);
+    /// bhqueue.insert(-2);
+    /// bhqueue.insert(-4);
+    /// assert_eq!(bhqueue.len(), 3);
+    /// ```
+    pub fn len(&self) -> usize {
+        // number of objects in the heap
+        // run time complexity O(1)
+        self.n - 1
+    }
+
+    /// Returns the extremal (smallest in min oriented heap
+    /// and largest in max oriented heap) object in the binary heap, if any.
+    /// Returns `None` otherwise.
+    /// # Example
+    /// ```
+    /// use njang::{BinaryHeap, HeapOrient};
+    /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3, HeapOrient::Min);
+    /// bhqueue.insert(0);
+    /// bhqueue.insert(1);
+    /// assert_eq!(bhqueue.extremum(), Some(&0));
+    /// ```
+    /// # Time complexity
+    /// This is expected to run in O(1)
+    pub fn extremum(&self) -> Option<&T> {
+        // run time complexity O(1)
+        self.vec[1].as_ref()
+    }
+
+    fn double(&mut self) {
+        // run time complexity O(N)
+        // doubling the size of the binary heap
+        let mut vector = Vec::with_capacity(self.vec.len());
+        for _ in 0..self.vec.len() {
+            vector.push(None);
+        }
+        self.vec.append(&mut vector);
+    }
+
+    fn halve(&mut self) {
+        // run time complexity O(N)
+        // halving the size of the binary heap
+        self.vec.truncate(self.vec.len() / 2);
+    }
+}
+
+impl<T: PartialOrd + Clone> BinaryHeap<T> {
+    fn swim(&mut self, mut k: usize) {
+        // moves data at position k up in the "tree" following the
+        // Peter principle: Nodes are promoted to their level of incompetence
+        // run time complexity O(log(N))
+        match self.kind {
+            HeapOrient::Max => {
+                while k > 1 && self.vec[k] > self.vec[k / 2] {
+                    let val = self.vec[k].clone();
+                    self.vec[k] = replace(&mut self.vec[k / 2], val);
+                    k /= 2;
+                }
+            }
+            HeapOrient::Min => {
+                while k > 1 && self.vec[k] < self.vec[k / 2] {
+                    let val = self.vec[k].clone();
+                    self.vec[k] = replace(&mut self.vec[k / 2], val);
+                    k /= 2;
+                }
+            }
+        }
+    }
+
+    /// Inserts an object into the binary heap.
+    /// # Example
+    /// ```
+    /// use njang::{BinaryHeap, HeapOrient};
+    /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3, HeapOrient::Min);
+    /// bhqueue.insert(-1);
+    /// bhqueue.insert(-2);
+    /// assert_eq!(bhqueue.len(), 2);
+    /// ```
+    /// # Time complexity
+    /// This is expected to run in O(log(N)) on average
+    pub fn insert(&mut self, key: T) {
+        // run time complexity O(log(N)) (without resizing)
+        // and O(N) with resizing
+        if self.n < self.vec.len() {
+            self.vec[self.n] = Some(key);
+            self.swim(self.n);
+            self.n += 1;
+            if self.n == self.vec.len() {
+                // resize the stack to allow more capacity
+                self.double();
+            }
+        } else {
+            panic!("cannot push, stack is full or has capacity 0");
+        }
+    }
+
+    fn sink(&mut self, mut k: usize, n: usize) {
+        // moves data at position k down in the "tree" following the
+        // Power struggle principle: Better nodes are promoted
+        // Nodes beyond node n are untouched.
+        // run time complexity O(log(N))
+        if self.is_empty() {
+            panic!("cannot sink data, heap is empty.")
+        } else {
+            match self.kind {
+                HeapOrient::Max => {
+                    while 2 * k < n {
+                        let mut j = 2 * k;
+                        // find the largest child of node k
+                        if j < n - 1 && self.vec[j] < self.vec[j + 1] {
+                            j += 1;
+                        }
+                        // compare it to node k
+                        if self.vec[k] >= self.vec[j] {
+                            break;
+                        }
+                        // exchange them if it is larger than node k
+                        let val = self.vec[k].clone();
+                        self.vec[k] = replace(&mut self.vec[j], val);
+                        k = j;
+                    }
+                }
+                HeapOrient::Min => {
+                    while 2 * k < n {
+                        let mut j = 2 * k;
+                        // find the smallest child of node k
+                        if j < n - 1 && self.vec[j] > self.vec[j + 1] {
+                            j += 1;
+                        }
+                        // compare it to node k
+                        if self.vec[k] <= self.vec[j] {
+                            break;
+                        }
+                        // exchange them if it is smaller than node k
+                        let val = self.vec[k].clone();
+                        self.vec[k] = replace(&mut self.vec[j], val);
+                        k = j;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Deletes and returns the extremal (smallest in min oriented heap
+    /// and largest in max oriented heap) object in the binary heap, if any.
+    /// Returns `None` otherwise.
+    /// # Example
+    /// ```
+    /// use njang::{BinaryHeap, HeapOrient};
+    /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3, HeapOrient::Min);
+    /// bhqueue.insert(0);
+    /// bhqueue.insert(1);
+    /// assert_eq!(bhqueue.delete(), Some(0));
+    /// ```
+    /// # Time complexity
+    /// This is expected to run in O(log(N)) on average
+    pub fn delete(&mut self) -> Option<T> {
+        // delete the extremal value and returns it
+        // run time complexity O(log(N))
+        if self.is_empty() {
+            panic!("cannot delete, heap is empty");
+        } else {
+            let res = self.vec[1].clone();
+            // Put the last object at the beginning of the root of the tree
+            self.vec[1] = replace(&mut self.vec[self.n - 1], None);
+            // sink the root object
+            self.sink(1, self.n);
+            self.n -= 1;
+            if self.n <= self.vec.len() / 4 {
+                self.halve();
+            }
+            res
+        }
+    }
 }
 
 #[test]
@@ -289,5 +588,7 @@ fn partial() {
     bt.insert(array![8., 7.]);
     println!("{:?}", bt.len());
     println!("{:#?}\n", bt);
-    println!("{:#?}", bt.nearest_neighbor(&array![9., 4.]).unwrap());
+    let knn = bt.k_nearest_neighbors(&array![6., 4.], 2).unwrap();
+    println!("{:#?}", knn[0]);
+    println!("{:#?}", knn[1]);
 }

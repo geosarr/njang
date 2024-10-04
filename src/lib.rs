@@ -14,5 +14,5 @@ pub use linear_model::{
     LinearModelSolver, LinearRegression, LinearRegressionSettings, LogisticRegression,
     LogisticRegressionSettings, RidgeClassification, RidgeClassificationSettings,
 };
-pub use neighbors::KdTree;
+pub use neighbors::*;
 pub use traits::{ClassificationModel, RegressionModel};
