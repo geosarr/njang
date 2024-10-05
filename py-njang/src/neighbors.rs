@@ -27,11 +27,17 @@ impl KDTree {
         k: isize,
     ) -> PyResult<Vec<(usize, f64)>> {
         if k >= 0 {
-            if let Some(result) = self
+            if let Some(mut heap) = self
                 .tree
                 .k_nearest_neighbors(&key.as_array().to_owned(), k as usize)
             {
-                Ok(result)
+                let mut res = heap
+                    .to_vec()
+                    .iter()
+                    .map(|n| (n.number, n.squared_dist))
+                    .collect::<Vec<_>>();
+                res.sort_by(|a, b| a.1.total_cmp(&b.1));
+                Ok(res)
             } else {
                 Err(PyValueError::new_err("no nearest neighbors"))
             }

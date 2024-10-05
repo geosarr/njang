@@ -97,6 +97,16 @@ impl<K> Node<K> {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct KthNearestNeighbor<D> {
+    pub number: usize,
+    pub squared_dist: D,
+}
+impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.squared_dist.partial_cmp(&other.squared_dist)
+    }
+}
 /// Implementation of a Kd-tree.
 ///
 /// The caller must make sure there are no duplicate keys inserted in the tree.
@@ -222,93 +232,72 @@ where
         Self::put(&mut self.root, key, self.len, &mut level);
         self.len += 1;
     }
-    /// Searches the nearest neighbor of a `key` in the tree.
+    /// Searches the nearest neighbors of a `key` in the tree.
     ///
     /// Adapted from [this youtube channel][br].
     ///
     /// [br]: https://www.youtube.com/watch?v=Glp7THUpGow
-    pub fn k_nearest_neighbors(&self, key: &K, k: usize) -> Option<Vec<(usize, K::Elem)>>
+    pub fn k_nearest_neighbors(
+        &self,
+        key: &K,
+        k: usize,
+    ) -> Option<BinaryHeap<KthNearestNeighbor<K::Elem>>>
     where
         K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
-        K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
+        K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Clone + Debug,
         for<'b> &'b K: Sub<&'b K, Output = K>,
     {
-        let best_squared_dist = if let Some(ref root) = self.root {
-            (&root.key - key).squared_l2_norm()
-        } else {
+        if self.root.is_none() | (k == 0) {
             return None;
-        };
-        let mut the_bests = HashSet::with_capacity(k + 1);
-        let mut the_bests_with_dist = Vec::with_capacity(k + 1);
-        for i in 0..k {
-            the_bests_with_dist.push(k_nearest_neighbors(
-                &self.root,
-                key,
-                0,
-                best_squared_dist,
-                0,
-                &the_bests,
-            ));
-            the_bests.insert(the_bests_with_dist.last().unwrap().0);
         }
-        Some(the_bests_with_dist)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct KthNearestNeighbor<D> {
-    number: usize,
-    dist: D,
-}
-impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.dist.partial_cmp(&other.dist)
+        let mut the_bests = BinaryHeap::with_capacity(k + 1, HeapOrient::Max);
+        // let mut best_numbers = HashSet::with_capacity(k + 1);
+        let _ = k_nearest_neighbors(&self.root, key, 0, &mut the_bests, k);
+        Some(the_bests)
     }
 }
 
 fn k_nearest_neighbors<'a, K>(
-    node: &'a Option<Box<Node<K>>>,
+    node: &Option<Box<Node<K>>>,
     key: &K,
-    mut best_key: usize,
-    mut best_squared_dist: K::Elem,
     level: usize,
-    the_bests: &HashSet<usize>,
-) -> (usize, K::Elem)
+    mut the_bests: &'a mut BinaryHeap<KthNearestNeighbor<K::Elem>>,
+    k: usize,
+) -> &'a mut BinaryHeap<KthNearestNeighbor<K::Elem>>
 where
     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
-    K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
+    K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Clone + Debug,
     for<'b> &'b K: Sub<&'b K, Output = K>,
 {
     if let Some(nod) = node {
+        let dist = (&nod.key - key).squared_l2_norm();
+        if the_bests.len() < k {
+            the_bests.insert(KthNearestNeighbor {
+                number: nod.number,
+                squared_dist: dist,
+            });
+        } else if dist < the_bests.extremum().unwrap().squared_dist {
+            // .unwrap() is safe here as long as k >= 1 because when k >= 1 the heap is not
+            // empty, which guaranties the existence of an extremum.
+            the_bests.delete();
+            the_bests.insert(KthNearestNeighbor {
+                number: nod.number,
+                squared_dist: dist,
+            });
+        }
         let coordinate = level % key.length();
         let (next, other) = if key[coordinate] < nod.key[coordinate] {
             (&nod.left, &nod.right)
         } else {
             (&nod.right, &nod.left)
         };
-        let (mut best, mut best_squared_dist) = k_nearest_neighbors(
-            next,
-            &key,
-            best_key,
-            best_squared_dist,
-            level + 1,
-            the_bests,
-        );
+        the_bests = k_nearest_neighbors(next, key, level + 1, the_bests, k);
         let dist = key[coordinate] - nod.key[coordinate];
-        if (dist * dist <= best_squared_dist) & !the_bests.contains(&nod.number) {
-            let radius_squared = (&nod.key - key).squared_l2_norm();
-            if radius_squared < best_squared_dist {
-                best_squared_dist = radius_squared;
-                best = nod.number;
-            }
-            let (temp, temp_smallest_dist) =
-                k_nearest_neighbors(other, &key, best, best_squared_dist, level + 1, the_bests);
-            (best, best_squared_dist) = (temp, temp_smallest_dist);
+        if (dist * dist <= the_bests.extremum().unwrap().squared_dist) | (the_bests.len() < k) {
+            the_bests = k_nearest_neighbors(other, key, level + 1, the_bests, k);
         }
-        return (best, best_squared_dist);
-    } else {
-        return (best_key, best_squared_dist);
-    };
+    }
+    the_bests
 }
 
 /// Defines the orientation of a binary heap (min oriented or max oriented)
@@ -561,7 +550,7 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
         // delete the extremal value and returns it
         // run time complexity O(log(N))
         if self.is_empty() {
-            panic!("cannot delete, heap is empty");
+            None
         } else {
             let res = self.vec[1].clone();
             // Put the last object at the beginning of the root of the tree
@@ -575,20 +564,30 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
             res
         }
     }
+
+    /// Converts the binary heap to `Vec`.
+    pub fn to_vec(mut self) -> Vec<T> {
+        let mut res = Vec::with_capacity(1 + self.len());
+        for _ in 0..self.len() {
+            res.push(self.delete().expect("Failed to delete"));
+        }
+        res
+    }
 }
 
 #[test]
 fn partial() {
     let mut bt = KdTree::<_>::new();
-    bt.insert(array![5., 4.]);
-    bt.insert(array![2., 6.]);
-    bt.insert(array![13., 3.]);
-    bt.insert(array![3., 1.]);
-    bt.insert(array![10., 2.]);
-    bt.insert(array![8., 7.]);
-    println!("{:?}", bt.len());
-    println!("{:#?}\n", bt);
-    let knn = bt.k_nearest_neighbors(&array![6., 4.], 2).unwrap();
-    println!("{:#?}", knn[0]);
-    println!("{:#?}", knn[1]);
+    bt.insert(array![5., 4.]); // 0 16   3
+    bt.insert(array![2., 6.]); // 1 53   6
+    bt.insert(array![13., 3.]); // 2 17  4
+    bt.insert(array![3., 1.]); // 3 45   5
+    bt.insert(array![10., 2.]); // 4 5   1
+    bt.insert(array![8., 7.]); // 5 10   2
+    let mut knn = bt.k_nearest_neighbors(&array![9., 4.], 7).unwrap();
+    println!("{:#?}\n", knn.delete());
+    println!("{:#?}\n", knn.delete());
+    println!("{:#?}\n", knn.delete());
+    println!("{:#?}\n", knn.delete());
+    println!("{:#?}\n", knn.delete());
 }
