@@ -237,6 +237,36 @@ where
     /// Tree-Based Data Structures][paper]. The distance metric is provided by
     /// the caller.
     ///
+    /// It returns a max oriented binary heap collecting the k nearest neighbors
+    /// of `key` located in the tree. It means that the top element of the heap
+    /// (accessible in O(1) running time) is the furthest from `key`.
+    ///
+    /// # Example
+    /// ```
+    /// use ndarray::array;
+    /// use njang::{Algebra, KdTree};
+    /// let mut bt = KdTree::<_>::new();
+    /// let a = array![5., 4.];
+    /// let b = array![2., 6.];
+    /// let c = array![13., 3.];
+    /// let d = array![3., 1.];
+    /// let e = array![10., 2.];
+    /// let f = array![8., 7.];
+    /// bt.insert(a.view());
+    /// bt.insert(b.view());
+    /// bt.insert(c.view());
+    /// bt.insert(d.view());
+    /// bt.insert(e.view());
+    /// bt.insert(f.view());
+    /// let mut knn = bt
+    ///     .k_nearest_neighbors(&array![9., 4.].view(), 4, |a, b| (a - b).minkowsky(2.))
+    ///     .unwrap();
+    /// assert_eq!(2, knn.delete().unwrap().number);
+    /// assert_eq!(0, knn.delete().unwrap().number);
+    /// assert_eq!(5, knn.delete().unwrap().number);
+    /// assert_eq!(4, knn.delete().unwrap().number);
+    /// ```
+    ///
     /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
     pub fn k_nearest_neighbors<D>(
         &self,
@@ -247,7 +277,6 @@ where
     where
         K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
         K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
-        for<'b> &'b K: Sub<&'b K, Output = K>,
         D: Fn(&K, &K) -> K::Elem,
     {
         if self.root.is_none() | (k == 0) {
@@ -525,28 +554,4 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
         }
         res
     }
-}
-
-#[test]
-fn partial() {
-    let mut bt = KdTree::<_>::new();
-    // 4 5 0 2 3 1
-    bt.insert(array![5., 4.]); // 0 16   3
-    bt.insert(array![2., 6.]); // 1 53   6
-    bt.insert(array![13., 3.]); // 2 17  4
-    bt.insert(array![3., 1.]); // 3 45   5
-    bt.insert(array![10., 2.]); // 4 5   1
-    bt.insert(array![8., 7.]); // 5 10   2
-    let mut knn = bt
-        .k_nearest_neighbors(&array![9., 4.], 7, |a, b| (a - b).minkowsky(3.))
-        .unwrap();
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
-    println!("{:#?}\n", knn.delete());
 }
