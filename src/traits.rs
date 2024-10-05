@@ -1,7 +1,7 @@
 use ndarray::*;
 use ndarray_linalg::Lapack;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
-use num_traits::{Float, FromPrimitive, Zero};
+use num_traits::{Float, FromPrimitive, One, Zero};
 
 pub trait Model<'a> {
     type Data;
@@ -131,7 +131,7 @@ pub trait Algebra: Container {
     fn powi(&self, n: i32) -> Self::PowiOutput;
     fn mean_axis(&self, axis: usize) -> Self::MeanAxisOutput;
     fn l2_norm(&self) -> Self::Elem;
-    fn squared_l2_norm(&self) -> Self::Elem;
+    fn minkowsky(&self, p: Self::Elem) -> Self::Elem;
     fn linf_norm(&self) -> Self::Elem;
     fn sign(&self) -> Self::SignOutput;
     fn softmax(&self, max: Option<Self::Elem>, axis: usize) -> Self::SoftmaxOutput;
@@ -140,7 +140,7 @@ pub trait Algebra: Container {
 impl<S, D> Algebra for ArrayBase<S, D>
 where
     S: Data,
-    S::Elem: Float + Zero + FromPrimitive + ScalarOperand,
+    S::Elem: Float + Zero + One + FromPrimitive + ScalarOperand,
     D: Dimension + RemoveAxis,
 {
     type MeanAxisOutput = Array<S::Elem, D::Smaller>;
@@ -154,10 +154,14 @@ where
         Self::mean_axis(self, Axis(axis)).unwrap()
     }
     fn l2_norm(&self) -> S::Elem {
-        self.squared_l2_norm().sqrt()
+        self.powi(2).sum().sqrt()
     }
-    fn squared_l2_norm(&self) -> Self::Elem {
-        self.powi(2).sum()
+    fn minkowsky(&self, p: S::Elem) -> Self::Elem {
+        assert!(
+            p >= S::Elem::one(),
+            "p should be >= 1 for Minkowsky distance."
+        );
+        self.map(|v| v.powf(p)).sum().powf(S::Elem::one() / p)
     }
     fn linf_norm(&self) -> S::Elem {
         let mut norm = S::Elem::zero();

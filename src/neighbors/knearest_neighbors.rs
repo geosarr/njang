@@ -98,11 +98,11 @@ impl<K> Node<K> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct KthNearestNeighbor<D> {
     pub number: usize,
-    pub squared_dist: D,
+    pub dist: D,
 }
 impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.squared_dist.partial_cmp(&other.squared_dist)
+        self.dist.partial_cmp(&other.dist)
     }
 }
 /// Implementation of a Kd-tree.
@@ -273,30 +273,29 @@ where
     for<'b> &'b K: Sub<&'b K, Output = K>,
 {
     if let Some(nod) = node {
-        let dist = (&nod.key - key).squared_l2_norm();
+        let dist = (&nod.key - key).l2_norm();
         if the_bests.len() < k {
             the_bests.insert(KthNearestNeighbor {
                 number: nod.number,
-                squared_dist: dist,
+                dist,
             });
-        } else if dist < the_bests.maximum().unwrap().squared_dist {
+        } else if dist < the_bests.maximum().unwrap().dist {
             // .unwrap() is safe here as long as k >= 1 because when k >= 1 the heap is not
             // empty, which guaranties the existence of a maximum.
             the_bests.delete();
             the_bests.insert(KthNearestNeighbor {
                 number: nod.number,
-                squared_dist: dist,
+                dist,
             });
         }
         let coordinate = level % key.length();
-        let (next, other) = if key[coordinate] < nod.key[coordinate] {
-            (&nod.left, &nod.right)
+        let (next, other, dist) = if key[coordinate] < nod.key[coordinate] {
+            (&nod.left, &nod.right, nod.key[coordinate] - key[coordinate])
         } else {
-            (&nod.right, &nod.left)
+            (&nod.right, &nod.left, key[coordinate] - nod.key[coordinate])
         };
         the_bests = k_nearest_neighbors(next, key, level + 1, the_bests, k);
-        let dist = key[coordinate] - nod.key[coordinate];
-        if (dist * dist <= the_bests.maximum().unwrap().squared_dist) | (the_bests.len() < k) {
+        if (dist <= the_bests.maximum().unwrap().dist) | (the_bests.len() < k) {
             the_bests = k_nearest_neighbors(other, key, level + 1, the_bests, k);
         }
     }
