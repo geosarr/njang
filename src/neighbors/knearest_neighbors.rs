@@ -6,8 +6,6 @@ use core::{
     fmt::Debug,
     ops::{Index, Mul, Sub},
 };
-use std::collections::HashSet;
-// use std::collections::BinaryHeap;
 
 use crate::{
     error::NjangError,
@@ -217,6 +215,7 @@ where
         }
         None
     }
+
     /// Inserts a `(key, value)` pair in the tree. The caller must make sure
     /// that the tree does not contain `key`.
     /// # Example
@@ -251,19 +250,23 @@ where
         if self.root.is_none() | (k == 0) {
             return None;
         }
-        let mut the_bests = BinaryHeap::with_capacity(k + 1);
-        let _ = k_nearest_neighbors(&self.root, key, 0, &mut the_bests, k);
-        Some(the_bests)
+        Some(k_nearest_neighbors(
+            &self.root,
+            key,
+            0,
+            BinaryHeap::with_capacity(k + 1),
+            k,
+        ))
     }
 }
 
-fn k_nearest_neighbors<'a, K>(
+fn k_nearest_neighbors<K>(
     node: &Option<Box<Node<K>>>,
     key: &K,
     level: usize,
-    mut the_bests: &'a mut BinaryHeap<KthNearestNeighbor<K::Elem>>,
+    mut the_bests: BinaryHeap<KthNearestNeighbor<K::Elem>>,
     k: usize,
-) -> &'a mut BinaryHeap<KthNearestNeighbor<K::Elem>>
+) -> BinaryHeap<KthNearestNeighbor<K::Elem>>
 where
     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,

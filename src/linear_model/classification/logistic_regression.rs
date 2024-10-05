@@ -1,8 +1,10 @@
 use rand_chacha::ChaCha20Rng;
 
+extern crate alloc;
+
+use alloc::fmt::format;
 use core::{hash::Hash, ops::Sub};
 use num_traits::Float;
-use std::fmt::format;
 
 use crate::solver::batch_gradient_descent;
 use crate::traits::Algebra;
