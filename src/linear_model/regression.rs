@@ -77,7 +77,7 @@ impl<T> Default for LinearRegressionSettings<T> {
     /// Defaults to linear regression without penalty
     /// ```
     /// use ndarray::{Array0, Array1, Array2};
-    /// use njang::{LinearRegression, LinearRegressionSettings};
+    /// use njang::prelude::*;
     ///
     /// let settings = LinearRegressionSettings::default();
     /// let model = LinearRegression::<Array1<f32>, Array0<f32>>::new(settings);
@@ -105,7 +105,7 @@ impl<T> Default for LinearRegressionSettings<T> {
 ///   penalty(coef)`
 ///
 /// with respect to the matrix `coef` of non-intercept weights, with
-/// regressors/predictors `X` and targets `Y`, dot designates the matrix
+/// regressors/predictors `X` and targets `Y`, `dot` designates the matrix
 /// multiplication.
 ///
 /// **It is important to note** that the fitted model depends on how the user
@@ -117,7 +117,9 @@ impl<T> Default for LinearRegressionSettings<T> {
 /// **In this case, the same settings apply to all regressions involved**.
 /// ```
 /// use ndarray::{array, Array1, Array2};
-/// use njang::{LinearModelSolver, LinearRegression, LinearRegressionSettings, RegressionModel};
+/// use njang::prelude::{
+///     LinearModelSolver, LinearRegression, LinearRegressionSettings, RegressionModel,
+/// };
 /// let x = array![[0., 1.], [1., -1.], [-2., 3.]];
 /// let coef = array![[10., 30.], [20., 40.]];
 /// let intercept = 1.;
@@ -433,7 +435,7 @@ pub(crate) fn init_grad<T, G>(
     settings: &LinearModelInternal<T>,
 ) -> (Array2<T>, Array2<T>)
 where
-    for<'a> T: Lapack + ScalarOperand,
+    T: Lapack + ScalarOperand,
     G: Fn(&Array2<T>, &Array2<T>, &Array2<T>, &LinearModelInternal<T>) -> Array2<T>,
 {
     let (n_samples, n_features, n_targets) = (x.nrows(), x.ncols(), y.ncols());
@@ -457,38 +459,3 @@ where
 }
 impl_regression!(Ix1, Ix0, randu_1d, reshape_to_1d, reshape_to_2d);
 impl_regression!(Ix2, Ix1, randu_2d, identity, reshape_to_2d);
-
-// #[test]
-// fn code() {
-//     use ndarray::array;
-
-//     let x = array![[0., 0., 1.], [1., 0., 0.]];
-//     println!("x:\n{:?}\n", x);
-//     println!("xxt:\n{:?}\n", x.dot(&x.t()));
-//     let coef = array![[1., 1.], [2., 2.], [3., 3.]];
-//     println!("coef:\n{:?}\n", coef);
-//     let y = x.dot(&coef);
-//     println!("y:\n{:?}\n", y);
-//     println!("xty:\n{:?}\n", x.t().dot(&y));
-
-//     let settings = LinearRegressionSettings {
-//         fit_intercept: false,
-//         solver: LinearModelSolver::Svd,
-//         l1_penalty: None,
-//         l2_penalty: None, //Some(1e-6),
-//         tol: Some(1e-6),
-//         step_size: Some(1e-3),
-//         random_state: Some(0),
-//         max_iter: Some(100000),
-//     };
-//     let mut model = LinearRegression::<Array2<_>, _>::new(settings);
-//     match model.fit(&x, &y) {
-//         Ok(_) => {
-//             println!("{:?}", model.coef());
-//             println!("{:?}", model.intercept());
-//         }
-//         Err(error) => {
-//             println!("{:?}", error);
-//         }
-//     };
-// }

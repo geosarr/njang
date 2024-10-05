@@ -2,17 +2,7 @@
 
 mod error;
 pub mod linear_model;
-mod neighbors;
+pub mod neighbors;
+pub mod prelude;
 mod solver;
 mod traits;
-mod utils;
-
-#[allow(unused)]
-pub(crate) use utils::{l2_diff, l2_diff2, l2_norm1, l2_norm2};
-
-pub use linear_model::{
-    LinearModelSolver, LinearRegression, LinearRegressionSettings, LogisticRegression,
-    LogisticRegressionSettings, RidgeClassification, RidgeClassificationSettings,
-};
-pub use neighbors::*;
-pub use traits::{Algebra, ClassificationModel, Container, Model, RegressionModel, Scalar};

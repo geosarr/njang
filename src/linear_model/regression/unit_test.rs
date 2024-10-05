@@ -1,5 +1,6 @@
 use super::super::*;
-use crate::{LinearRegression, RegressionModel};
+use crate::linear_model::LinearRegression;
+use crate::traits::RegressionModel;
 extern crate alloc;
 use crate::traits::Algebra;
 use alloc::vec::Vec;

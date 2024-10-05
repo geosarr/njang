@@ -6,9 +6,9 @@ use alloc::fmt::format;
 use core::{hash::Hash, ops::Sub};
 use num_traits::Float;
 
+use crate::linear_model::LinearModelSolver;
 use crate::solver::batch_gradient_descent;
 use crate::traits::Algebra;
-use crate::LinearModelSolver;
 use crate::{
     error::NjangError,
     linear_model::{
@@ -16,8 +16,7 @@ use crate::{
         preprocess, randu_2d, LinearModelParameter,
     },
     solver::stochastic_gradient_descent,
-    traits::{Container, Label, Model, Scalar},
-    ClassificationModel,
+    traits::{ClassificationModel, Container, Label, Model, Scalar},
 };
 
 use ndarray::{Array1, Array2, Axis, ScalarOperand};

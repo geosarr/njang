@@ -9,8 +9,7 @@ use core::{
 
 use crate::{
     error::NjangError,
-    traits::{Algebra, Container, Label, Model, Scalar},
-    ClassificationModel,
+    traits::{Algebra, ClassificationModel, Container, Label, Model, Scalar},
 };
 
 use core::mem::replace;
@@ -110,7 +109,7 @@ impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
 /// The caller must make sure there are no duplicate keys inserted in the tree.
 /// # Example
 /// ```
-/// use njang::KdTree;
+/// use njang::prelude::*;
 /// let mut bt = KdTree::new();
 /// bt.insert([0]);
 /// bt.insert([1]);
@@ -134,7 +133,7 @@ impl<K: Container> KdTree<K> {
     /// Creates an empty tree instance.
     /// # Example
     /// ```
-    /// use njang::KdTree;
+    /// use njang::prelude::*;
     /// let bt = KdTree::<[usize; 1]>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
@@ -144,7 +143,7 @@ impl<K: Container> KdTree<K> {
     /// Creates a new tree with an initial (key, value) pair.
     /// # Example
     /// ```
-    /// use njang::KdTree;
+    /// use njang::prelude::*;
     /// let bt = KdTree::init(["btree"]);
     /// assert_eq!(bt.len(), 1);
     /// ```
@@ -157,7 +156,7 @@ impl<K: Container> KdTree<K> {
     /// Gives the number of (key, value) pairs in the tree.
     /// # Example
     /// ```
-    /// use njang::KdTree;
+    /// use njang::prelude::*;
     /// let bt = KdTree::<[f32; 2]>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
@@ -167,7 +166,7 @@ impl<K: Container> KdTree<K> {
     /// Tests whether or not the tree is empty.
     /// # Example
     /// ```
-    /// use njang::KdTree;
+    /// use njang::prelude::*;
     /// let mut bt = KdTree::new();
     /// bt.insert([1]);
     /// assert!(!bt.is_empty());
@@ -220,7 +219,7 @@ where
     /// that the tree does not contain `key`.
     /// # Example
     /// ```
-    /// use njang::KdTree;
+    /// use njang::prelude::*;
     /// let mut bt = KdTree::<[isize; 1]>::new();
     /// bt.insert([-1]);
     /// bt.insert([-2]);
@@ -244,7 +243,7 @@ where
     /// # Example
     /// ```
     /// use ndarray::array;
-    /// use njang::{Algebra, KdTree};
+    /// use njang::prelude::*;
     /// let mut bt = KdTree::<_>::new();
     /// let a = array![5., 4.];
     /// let b = array![2., 6.];
@@ -339,7 +338,7 @@ where
 /// Implementation of priority queues using a `Vec` structure
 /// # Examples
 /// ```
-/// use njang::BinaryHeap;
+/// use njang::prelude::*;
 /// let mut bhqueue = BinaryHeap::with_capacity(3);
 /// assert_eq!(bhqueue.len(), 0);
 /// bhqueue.insert(0);
@@ -375,7 +374,7 @@ impl<T: PartialOrd> BinaryHeap<T> {
     /// If `capacity = 0`, then it panics.
     /// # Example
     /// ```
-    /// use njang::BinaryHeap;
+    /// use njang::prelude::*;
     /// let bhqueue = BinaryHeap::<&str>::with_capacity(1);
     /// assert_eq!(bhqueue.len(), 0);
     /// ```
@@ -397,7 +396,7 @@ impl<T: PartialOrd> BinaryHeap<T> {
     /// Tests whether or not the binary heap is empty.
     /// # Example
     /// ```
-    /// use njang::BinaryHeap;
+    /// use njang::prelude::*;
     /// let mut bhqueue = BinaryHeap::<usize>::with_capacity(1);
     /// bhqueue.insert(1);
     /// assert!(!bhqueue.is_empty());
@@ -409,7 +408,7 @@ impl<T: PartialOrd> BinaryHeap<T> {
     /// Gives the number of objects in the binary heap.
     /// # Example
     /// ```
-    /// use njang::BinaryHeap;
+    /// use njang::prelude::*;
     /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3);
     /// bhqueue.insert(-1);
     /// bhqueue.insert(-2);
@@ -424,7 +423,7 @@ impl<T: PartialOrd> BinaryHeap<T> {
     /// Returns `None` otherwise.
     /// # Example
     /// ```
-    /// use njang::BinaryHeap;
+    /// use njang::prelude::*;
     /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3);
     /// bhqueue.insert(0);
     /// bhqueue.insert(1);
@@ -469,7 +468,7 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
     /// Inserts an object into the binary heap.
     /// # Example
     /// ```
-    /// use njang::BinaryHeap;
+    /// use njang::prelude::*;
     /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3);
     /// bhqueue.insert(-1);
     /// bhqueue.insert(-2);
@@ -521,7 +520,7 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
     /// Returns `None` otherwise.
     /// # Example
     /// ```
-    /// use njang::BinaryHeap;
+    /// use njang::prelude::*;
     /// let mut bhqueue = BinaryHeap::<isize>::with_capacity(3);
     /// bhqueue.insert(0);
     /// bhqueue.insert(1);

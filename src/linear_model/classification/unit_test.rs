@@ -1,7 +1,7 @@
 use ndarray::{array, Array2};
 
 use crate::linear_model::classification::{RidgeClassification, RidgeClassificationSettings};
-use crate::{ClassificationModel, LinearModelSolver};
+use crate::prelude::{ClassificationModel, LinearModelSolver};
 
 #[test]
 fn test_ridge_classifier() {

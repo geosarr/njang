@@ -4,9 +4,8 @@ use num_traits::Float;
 
 use crate::{
     error::NjangError,
-    traits::{Container, Model, Scalar},
-    ClassificationModel, LinearModelSolver, LinearRegression, LinearRegressionSettings,
-    RegressionModel,
+    linear_model::{LinearModelSolver, LinearRegression, LinearRegressionSettings},
+    traits::{ClassificationModel, Container, Model, RegressionModel, Scalar},
 };
 
 use super::{argmax, dummies, unique_labels};
