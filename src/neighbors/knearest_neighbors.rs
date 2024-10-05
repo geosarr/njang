@@ -234,18 +234,21 @@ where
     /// Searches the nearest neighbors of a `key` in the tree.
     ///
     /// Adapted from [Parallel k Nearest Neighbor Graph Construction Using
-    /// Tree-Based Data Structures][paper].
+    /// Tree-Based Data Structures][paper]. The distance metric is provided by
+    /// the caller.
     ///
     /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
-    pub fn k_nearest_neighbors(
+    pub fn k_nearest_neighbors<D>(
         &self,
         key: &K,
         k: usize,
+        distance: D,
     ) -> Option<BinaryHeap<KthNearestNeighbor<K::Elem>>>
     where
         K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
         K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
         for<'b> &'b K: Sub<&'b K, Output = K>,
+        D: Fn(&K, &K) -> K::Elem,
     {
         if self.root.is_none() | (k == 0) {
             return None;
@@ -256,24 +259,26 @@ where
             0,
             BinaryHeap::with_capacity(k + 1),
             k,
+            &distance,
         ))
     }
 }
 
-fn k_nearest_neighbors<K>(
+fn k_nearest_neighbors<K, D>(
     node: &Option<Box<Node<K>>>,
     key: &K,
     level: usize,
     mut the_bests: BinaryHeap<KthNearestNeighbor<K::Elem>>,
     k: usize,
+    distance: &D,
 ) -> BinaryHeap<KthNearestNeighbor<K::Elem>>
 where
     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
-    for<'b> &'b K: Sub<&'b K, Output = K>,
+    D: Fn(&K, &K) -> K::Elem,
 {
     if let Some(nod) = node {
-        let dist = (&nod.key - key).l2_norm();
+        let dist = distance(&nod.key, key);
         if the_bests.len() < k {
             the_bests.insert(KthNearestNeighbor {
                 number: nod.number,
@@ -294,9 +299,9 @@ where
         } else {
             (&nod.right, &nod.left, key[coordinate] - nod.key[coordinate])
         };
-        the_bests = k_nearest_neighbors(next, key, level + 1, the_bests, k);
+        the_bests = k_nearest_neighbors(next, key, level + 1, the_bests, k, distance);
         if (dist <= the_bests.maximum().unwrap().dist) | (the_bests.len() < k) {
-            the_bests = k_nearest_neighbors(other, key, level + 1, the_bests, k);
+            the_bests = k_nearest_neighbors(other, key, level + 1, the_bests, k, distance);
         }
     }
     the_bests
@@ -525,13 +530,16 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
 #[test]
 fn partial() {
     let mut bt = KdTree::<_>::new();
+    // 4 5 0 2 3 1
     bt.insert(array![5., 4.]); // 0 16   3
     bt.insert(array![2., 6.]); // 1 53   6
     bt.insert(array![13., 3.]); // 2 17  4
     bt.insert(array![3., 1.]); // 3 45   5
     bt.insert(array![10., 2.]); // 4 5   1
     bt.insert(array![8., 7.]); // 5 10   2
-    let mut knn = bt.k_nearest_neighbors(&array![9., 4.], 7).unwrap();
+    let mut knn = bt
+        .k_nearest_neighbors(&array![9., 4.], 7, |a, b| (a - b).minkowsky(3.))
+        .unwrap();
     println!("{:#?}\n", knn.delete());
     println!("{:#?}\n", knn.delete());
     println!("{:#?}\n", knn.delete());

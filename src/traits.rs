@@ -161,7 +161,7 @@ where
             p >= S::Elem::one(),
             "p should be >= 1 for Minkowsky distance."
         );
-        self.map(|v| v.powf(p)).sum().powf(S::Elem::one() / p)
+        self.map(|v| v.abs().powf(p)).sum().powf(S::Elem::one() / p)
     }
     fn linf_norm(&self) -> S::Elem {
         let mut norm = S::Elem::zero();

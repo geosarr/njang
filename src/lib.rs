@@ -15,4 +15,4 @@ pub use linear_model::{
     LogisticRegressionSettings, RidgeClassification, RidgeClassificationSettings,
 };
 pub use neighbors::*;
-pub use traits::{ClassificationModel, RegressionModel};
+pub use traits::{Algebra, ClassificationModel, Container, Model, RegressionModel, Scalar};
