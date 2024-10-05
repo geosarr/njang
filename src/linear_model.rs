@@ -1,3 +1,4 @@
+//! This module implements some  classification and regression linear models.
 mod classification;
 mod gradient;
 mod regression;
@@ -40,6 +41,16 @@ where
     (x_centered, x_mean, y_centered, y_mean)
 }
 
+/// Parameters used in a linear model.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LinearModelParameter<C, I> {
+    /// Non-intercept weight(s).
+    pub coef: Option<C>,
+    /// Intercept weight(s) of the model.
+    pub intercept: Option<I>,
+}
+
+/// Solvers used in a linear model.
 #[derive(Debug, Default, Clone, Copy)]
 pub enum LinearModelSolver {
     /// Uses Singular Value Decomposition
@@ -82,14 +93,6 @@ pub enum LinearModelSolver {
     /// The user should standardize the input predictors, otherwise the
     /// algorithm may not converge.
     Sag,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct LinearModelParameter<C, I> {
-    /// Non-intercept weight(s).
-    pub coef: Option<C>,
-    /// Intercept weight(s) of the model.
-    pub intercept: Option<I>,
 }
 
 /// This is responsible for processing settings, setting default values

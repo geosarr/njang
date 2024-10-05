@@ -5,11 +5,12 @@ use num_traits::Float;
 use crate::{
     error::NjangError,
     linear_model::{LinearModelSolver, LinearRegression, LinearRegressionSettings},
-    traits::{ClassificationModel, Container, Model, RegressionModel, Scalar},
+    traits::{ClassificationModel, Container, Label, Model, RegressionModel, Scalar},
 };
 
 use super::{argmax, dummies, unique_labels};
 
+/// Settings used in Ridge classification model.
 pub struct RidgeClassificationSettings<T> {
     pub fit_intercept: bool,
     pub solver: LinearModelSolver,
@@ -20,6 +21,7 @@ pub struct RidgeClassificationSettings<T> {
     pub max_iter: Option<usize>,
 }
 
+/// Classification with a multi-output Ridge regression.
 pub struct RidgeClassification<C, I, L = i32>
 where
     C: Container,
@@ -28,9 +30,7 @@ where
     pub labels: Vec<L>,
 }
 
-impl<'a, T: Scalar, L: Eq + Hash + Ord + Copy + 'a> Model<'a>
-    for RidgeClassification<Array2<T>, Array1<T>, L>
-{
+impl<'a, T: Scalar, L: Label> Model<'a> for RidgeClassification<Array2<T>, Array1<T>, L> {
     type FitResult = Result<(), NjangError>;
     type Data = (&'a Array2<T>, &'a Array1<L>);
     fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
@@ -40,9 +40,7 @@ impl<'a, T: Scalar, L: Eq + Hash + Ord + Copy + 'a> Model<'a>
         RegressionModel::fit(&mut self.model, *x, &y_reg)
     }
 }
-impl<T: Scalar, L: Eq + Ord + Hash + Copy + 'static> ClassificationModel
-    for RidgeClassification<Array2<T>, Array1<T>, L>
-{
+impl<T: Scalar, L: Label> ClassificationModel for RidgeClassification<Array2<T>, Array1<T>, L> {
     type X = Array2<T>;
     type Y = Array1<L>;
     type PredictResult = Result<Array1<L>, ()>;

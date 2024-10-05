@@ -23,14 +23,6 @@ use ndarray::{Array1, Array2, Axis, ScalarOperand};
 
 use crate::linear_model::LinearModelInternal;
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct LogisticRegressionParameter<C, I> {
-    /// Non-intercept weight(s).
-    pub coef: Option<C>,
-    /// Intercept weight(s) of the model.
-    pub intercept: Option<I>,
-}
-
 /// Hyperparameters used in a logistic regression model.
 #[derive(Debug, Clone, Copy)]
 pub struct LogisticRegressionSettings<T> {
@@ -66,6 +58,8 @@ pub struct LogisticRegressionSettings<T> {
     pub max_iter: Option<usize>,
 }
 
+/// Logistic regression eventually penalized (with L1-penalty, or with
+/// L2-penalty or with both L1 and L2 penalties).
 #[derive(Debug, Clone)]
 pub struct LogisticRegression<C, I, L>
 where

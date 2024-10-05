@@ -193,12 +193,3 @@ where
         exponentials / denom
     }
 }
-
-#[test]
-fn traits() {
-    let a = ndarray::array![1., 2., 3.];
-    let sum = a.sum_axis(Axis(0));
-    println!("a:\n{:?}", a);
-    println!("sum:\n{:?}", sum);
-    println!("norm:\n{:?}", &a / sum);
-}
