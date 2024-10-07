@@ -14,89 +14,33 @@ use crate::{
 
 use core::mem::replace;
 
-enum KnnSolver {
-    Brute,
-}
-
-struct Knn<'a, T, L> {
-    k: usize,
-    data: Option<(&'a Array2<T>, &'a Array1<L>)>,
-    solver: KnnSolver,
-}
-
-impl<'a, 'b: 'a, T, L: 'a + 'b> Model<'b> for Knn<'a, T, L>
-where
-    T: Scalar,
-{
-    type Data = (&'b Array2<T>, &'b Array1<L>);
-    type FitResult = Result<(), NjangError>;
-    fn fit(&mut self, data: &'b Self::Data) -> Self::FitResult {
-        let (x, y) = data;
-        match self.solver {
-            KnnSolver::Brute => {
-                self.data = Some((*x, *y));
-            }
-        };
-        Ok(())
-    }
-}
-
-// impl<'a, 'b, T: Scalar, L: Label> ClassificationModel for Knn<'a, T, L>
-// where
-//     'b: 'a,
-// {
-//     type PredictProbaResult = Result<(), ()>;
-//     type PredictResult = Result<(), ()>;
-//     type X = Array2<T>;
-//     type Y = Array1<L>;
-//     fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as
-// Model<'b>>::FitResult {         let data = &(x, y);
-//         <Self as Model>::fit(self, data)
-//     }
-//     fn predict(&self, x: &Self::X) -> Self::PredictResult {
-//         Ok(())
-//     }
-//     fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult {
-//         Ok(())
-//     }
-// }
-
-#[test]
-fn knn() {
-    let x = array![[1., 1.], [0., 1.], [-1., 0.]];
-    let y = array![1, 1, 0];
-    let mut model = Knn {
-        k: 2,
-        data: None,
-        solver: KnnSolver::Brute,
-    };
-    let data = (&x, &y);
-    Model::fit(&mut model, &data);
-    println!("{:?}", model.data.unwrap().0);
-}
-
 #[derive(Clone, Debug, PartialEq)]
 struct Node<K> {
     key: K,
     number: usize,
+    coordinate: Option<usize>,
     left: Option<Box<Node<K>>>,
     right: Option<Box<Node<K>>>,
 }
 
 impl<K> Node<K> {
-    pub fn new(key: K, number: usize) -> Self {
+    pub fn new(key: K, number: usize, coordinate: Option<usize>) -> Self {
         Self {
             key,
             number,
+            coordinate,
             left: None,
             right: None,
         }
     }
 }
 
+/// Represents a nearest neighbor point
 #[derive(Debug, PartialEq, Clone)]
 pub struct KthNearestNeighbor<D> {
+    /// Number of appearance in the tree when building it.
     pub number: usize,
+    /// Distance from query point.
     pub dist: D,
 }
 impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
@@ -104,6 +48,7 @@ impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
         self.dist.partial_cmp(&other.dist)
     }
 }
+
 /// Implementation of a Kd-tree.
 ///
 /// The caller must make sure there are no duplicate keys inserted in the tree.
@@ -125,12 +70,21 @@ where
     len: usize,
 }
 impl<K: Container> Default for KdTree<K> {
+    /// Creates an empty tree.
+    ///
+    /// # Example
+    /// ```
+    /// use njang::prelude::*;
+    /// let bt = KdTree::<[usize; 1]>::default();
+    /// assert_eq!(bt.len(), 0);
+    /// ```
     fn default() -> Self {
         Self::new()
     }
 }
 impl<K: Container> KdTree<K> {
     /// Creates an empty tree instance.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -140,19 +94,7 @@ impl<K: Container> KdTree<K> {
     pub fn new() -> Self {
         Self { root: None, len: 0 }
     }
-    /// Creates a new tree with an initial (key, value) pair.
-    /// # Example
-    /// ```
-    /// use njang::prelude::*;
-    /// let bt = KdTree::init(["btree"]);
-    /// assert_eq!(bt.len(), 1);
-    /// ```
-    pub fn init(key: K) -> Self {
-        Self {
-            root: Some(Box::new(Node::new(key, 0))),
-            len: 1,
-        }
-    }
+
     /// Gives the number of (key, value) pairs in the tree.
     /// # Example
     /// ```
@@ -163,6 +105,7 @@ impl<K: Container> KdTree<K> {
     pub fn len(&self) -> usize {
         self.len
     }
+
     /// Tests whether or not the tree is empty.
     /// # Example
     /// ```
@@ -181,22 +124,22 @@ where
     K: Index<usize> + Container<LenghtOutput = usize>,
     K::Output: PartialOrd + Copy,
 {
-    fn put<'a>(
+    fn put(
         node: &mut Option<Box<Node<K>>>,
         key: K,
         number: usize,
-        level: &'a mut usize,
-    ) -> Option<&'a mut Box<Node<K>>> {
+        coordinate: usize,
+    ) -> Option<&mut Box<Node<K>>> {
         match node {
-            None => *node = Some(Box::new(Node::new(key, number))),
-            Some(ref mut nod) => match key[*level].partial_cmp(&nod.key[*level]) {
+            None => *node = Some(Box::new(Node::new(key, number, Some(coordinate)))),
+            Some(ref mut nod) => match key[coordinate].partial_cmp(&nod.key[coordinate]) {
                 Some(Ordering::Less) => {
-                    *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.left, key, number, level);
+                    let coordinate = (nod.coordinate.unwrap() + 1) % key.length();
+                    return Self::put(&mut nod.left, key, number, coordinate);
                 }
                 Some(Ordering::Greater) => {
-                    *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.right, key, number, level);
+                    let coordinate = (nod.coordinate.unwrap() + 1) % key.length();
+                    return Self::put(&mut nod.right, key, number, coordinate);
                 }
                 Some(Ordering::Equal) => {
                     // Used to overwrite the current node's value, but doing so would change
@@ -206,8 +149,8 @@ where
                     // return Some(nod);
 
                     // Possibility to put key and value in the left branch also.
-                    *level = (*level + 1) % key.length();
-                    return Self::put(&mut nod.right, key, number, level);
+                    let coordinate = (nod.coordinate.unwrap() + 1) % key.length();
+                    return Self::put(&mut nod.right, key, number, coordinate);
                 }
                 None => return None, //panic!("Unknown situation"),
             },
@@ -227,7 +170,7 @@ where
     /// ```
     pub fn insert(&mut self, key: K) {
         let mut level = 0;
-        Self::put(&mut self.root, key, self.len, &mut level);
+        Self::put(&mut self.root, key, self.len, level);
         self.len += 1;
     }
     /// Searches the nearest neighbors of a `key` in the tree.
@@ -284,7 +227,6 @@ where
         Some(k_nearest_neighbors(
             &self.root,
             key,
-            0,
             BinaryHeap::with_capacity(k + 1),
             k,
             &distance,
@@ -292,10 +234,44 @@ where
     }
 }
 
+enum ChildType {
+    Left,
+    Right,
+}
+fn build_tree<K>(
+    node: &mut Option<Box<Node<K>>>,
+    child_type: ChildType,
+    keys: &mut Vec<K>,
+    start: usize,
+    end: usize,
+    number: usize,
+) -> usize
+where
+    K: Clone,
+{
+    if start == end {
+        return number;
+    }
+    if end == start + 1 {
+        match child_type {
+            ChildType::Left => {
+                if let Some(ref mut nod) = node {
+                    nod.left = Some(Box::new(Node::new(keys[start].clone(), number, None)));
+                }
+            }
+            ChildType::Right => {
+                if let Some(ref mut nod) = node {
+                    nod.right = Some(Box::new(Node::new(keys[end].clone(), number, None)));
+                }
+            }
+        };
+        return number + 1;
+    }
+    return number;
+}
 fn k_nearest_neighbors<K, D>(
     node: &Option<Box<Node<K>>>,
     key: &K,
-    level: usize,
     mut the_bests: BinaryHeap<KthNearestNeighbor<K::Elem>>,
     k: usize,
     distance: &D,
@@ -321,15 +297,15 @@ where
                 dist,
             });
         }
-        let coordinate = level % key.length();
+        let coordinate = nod.coordinate.unwrap();
         let (next, other, dist) = if key[coordinate] < nod.key[coordinate] {
             (&nod.left, &nod.right, nod.key[coordinate] - key[coordinate])
         } else {
             (&nod.right, &nod.left, key[coordinate] - nod.key[coordinate])
         };
-        the_bests = k_nearest_neighbors(next, key, level + 1, the_bests, k, distance);
+        the_bests = k_nearest_neighbors(next, key, the_bests, k, distance);
         if (dist <= the_bests.maximum().unwrap().dist) | (the_bests.len() < k) {
-            the_bests = k_nearest_neighbors(other, key, level + 1, the_bests, k, distance);
+            the_bests = k_nearest_neighbors(other, key, the_bests, k, distance);
         }
     }
     the_bests
