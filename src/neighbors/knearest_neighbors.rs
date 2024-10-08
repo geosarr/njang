@@ -1,4 +1,5 @@
 use ndarray::*;
+use num_traits::Zero;
 use rand_chacha::{ChaCha20Core, ChaCha20Rng};
 
 use core::{
@@ -121,7 +122,7 @@ impl<K: Container> KdTree<K> {
 
 impl<K> KdTree<K>
 where
-    K: Index<usize> + Container<LenghtOutput = usize>,
+    K: Index<usize, Output = K::Elem> + Container<LenghtOutput = usize>,
     K::Output: PartialOrd + Copy,
 {
     fn put(
@@ -217,8 +218,8 @@ where
         distance: D,
     ) -> Option<BinaryHeap<KthNearestNeighbor<K::Elem>>>
     where
-        K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
-        K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
+        K: Algebra + Debug,
+        K::Elem: Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
         D: Fn(&K, &K) -> K::Elem,
     {
         if self.root.is_none() | (k == 0) {
@@ -232,8 +233,37 @@ where
             &distance,
         ))
     }
+    pub fn from_vec(keys: &mut Vec<(usize, K)>) -> Option<Self>
+    where
+        K: Clone + Index<usize> + Debug,
+        K::Elem: Zero + Sub<K::Elem, Output = K::Elem> + Debug,
+    {
+        if keys.is_empty() {
+            return None;
+        }
+        let dimension = keys[0].1.length();
+        let n = keys.len();
+        let dim_max_spread = find_dim_max_spread(keys, 0, n - 1, dimension);
+        let median = n / 2;
+        keys[0..n].sort_by(|a, b| {
+            a.1[dim_max_spread]
+                .partial_cmp(&b.1[dim_max_spread])
+                .unwrap()
+        });
+        println!("{:?}", keys);
+        let root_key = keys[median].1.clone();
+        let mut root = Some(Box::new(Node::new(
+            root_key,
+            keys[median].0,
+            Some(dim_max_spread),
+        )));
+        build_tree(&mut root, ChildType::Left, keys, 0, median, dimension);
+        build_tree(&mut root, ChildType::Right, keys, median + 1, n, dimension);
+        Some(Self { root: root, len: n })
+    }
 }
 
+#[derive(Debug)]
 enum ChildType {
     Left,
     Right,
@@ -241,33 +271,132 @@ enum ChildType {
 fn build_tree<K>(
     node: &mut Option<Box<Node<K>>>,
     child_type: ChildType,
-    keys: &mut Vec<K>,
+    keys: &mut Vec<(usize, K)>,
     start: usize,
     end: usize,
-    number: usize,
-) -> usize
-where
-    K: Clone,
+    dimension: usize,
+) where
+    K: Clone + Index<usize> + Debug,
+    K::Output: PartialOrd + Zero + Copy + Sub<K::Output, Output = K::Output> + Debug,
 {
-    if start == end {
-        return number;
+    if start >= end {
+        return;
     }
     if end == start + 1 {
         match child_type {
             ChildType::Left => {
                 if let Some(ref mut nod) = node {
-                    nod.left = Some(Box::new(Node::new(keys[start].clone(), number, None)));
+                    let (number, key) = (&keys[start].0, &keys[start].1);
+                    nod.left = Some(Box::new(Node::new(key.clone(), *number, None)));
                 }
             }
             ChildType::Right => {
                 if let Some(ref mut nod) = node {
-                    nod.right = Some(Box::new(Node::new(keys[end].clone(), number, None)));
+                    let (number, key) = (&keys[end].0, &keys[end].1);
+                    nod.right = Some(Box::new(Node::new(key.clone(), *number, None)));
                 }
             }
         };
-        return number + 1;
+        return;
     }
-    return number;
+    let dim_max_spread = find_dim_max_spread(keys, start, end, dimension);
+    keys[start..end].sort_by(|a, b| {
+        a.1[dim_max_spread]
+            .partial_cmp(&b.1[dim_max_spread])
+            .unwrap()
+    });
+    println!("\nchild:\t{:?}\n\t{:?}", child_type, keys);
+    let median = start + (end - start) / 2;
+    println!("\nMedian:\t{median}");
+    match child_type {
+        ChildType::Left => {
+            if let Some(ref mut nod) = node {
+                nod.left = Some(Box::new(Node::new(
+                    keys[median].1.clone(),
+                    keys[median].0,
+                    Some(dim_max_spread),
+                )));
+                build_tree(
+                    &mut nod.left,
+                    ChildType::Left,
+                    keys,
+                    start,
+                    median,
+                    dimension,
+                );
+                build_tree(
+                    &mut nod.left,
+                    ChildType::Right,
+                    keys,
+                    median + 1,
+                    end,
+                    dimension,
+                );
+            }
+        }
+        ChildType::Right => {
+            if let Some(ref mut nod) = node {
+                nod.right = Some(Box::new(Node::new(
+                    keys[median].1.clone(),
+                    keys[median].0,
+                    Some(dim_max_spread),
+                )));
+                build_tree(
+                    &mut nod.right,
+                    ChildType::Left,
+                    keys,
+                    start,
+                    median,
+                    dimension,
+                );
+                build_tree(
+                    &mut nod.right,
+                    ChildType::Right,
+                    keys,
+                    median + 1,
+                    end,
+                    dimension,
+                );
+            }
+        }
+    };
+}
+
+fn find_dim_max_spread<K>(
+    keys: &mut Vec<(usize, K)>,
+    start: usize,
+    end: usize,
+    dimension: usize,
+) -> usize
+where
+    K: Clone + Index<usize> + Debug,
+    K::Output: PartialOrd + Zero + Copy + Sub<K::Output, Output = K::Output> + Debug,
+{
+    let (mut dim_max_spread, mut max_spread) = (0, K::Output::zero());
+    for dim in 0..dimension {
+        let (mut min, mut max) = (keys[start].1[dim], keys[start].1[dim]);
+        for index in start + 1..end {
+            let val = keys[index].1[dim];
+            if val > max {
+                max = val;
+            }
+            if val < min {
+                min = val;
+            }
+        }
+        let spread = max - min;
+        if spread > max_spread {
+            dim_max_spread = dim;
+            max_spread = spread;
+        }
+    }
+    println!(
+        "\nDim max spread: {:?}, max spred: {:?}, v: {:?}",
+        dim_max_spread,
+        max_spread,
+        &keys[start..end]
+    );
+    dim_max_spread
 }
 fn k_nearest_neighbors<K, D>(
     node: &Option<Box<Node<K>>>,
@@ -297,15 +426,16 @@ where
                 dist,
             });
         }
-        let coordinate = nod.coordinate.unwrap();
-        let (next, other, dist) = if key[coordinate] < nod.key[coordinate] {
-            (&nod.left, &nod.right, nod.key[coordinate] - key[coordinate])
-        } else {
-            (&nod.right, &nod.left, key[coordinate] - nod.key[coordinate])
-        };
-        the_bests = k_nearest_neighbors(next, key, the_bests, k, distance);
-        if (dist <= the_bests.maximum().unwrap().dist) | (the_bests.len() < k) {
-            the_bests = k_nearest_neighbors(other, key, the_bests, k, distance);
+        if let Some(coordinate) = nod.coordinate {
+            let (next, other, dist) = if key[coordinate] < nod.key[coordinate] {
+                (&nod.left, &nod.right, nod.key[coordinate] - key[coordinate])
+            } else {
+                (&nod.right, &nod.left, key[coordinate] - nod.key[coordinate])
+            };
+            the_bests = k_nearest_neighbors(next, key, the_bests, k, distance);
+            if (dist <= the_bests.maximum().unwrap().dist) | (the_bests.len() < k) {
+                the_bests = k_nearest_neighbors(other, key, the_bests, k, distance);
+            }
         }
     }
     the_bests
@@ -529,4 +659,26 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
         }
         res
     }
+}
+
+#[test]
+fn kd() {
+    let mut v = [
+        array![5., 4.],
+        array![2., 6.],
+        array![13., 3.],
+        array![3., 1.],
+        array![10., 2.],
+        array![8., 7.],
+    ]
+    .into_iter()
+    .enumerate()
+    .collect::<Vec<_>>();
+    let k = KdTree::from_vec(&mut v);
+    print!("{:#?}", k);
+    print!(
+        "{:#?}",
+        k.unwrap()
+            .k_nearest_neighbors(&array![9., 4.], 4, |a, b| (a - b).minkowsky(2.))
+    );
 }
