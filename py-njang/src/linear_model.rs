@@ -1,5 +1,5 @@
 use ndarray::{Array0, Array1, Array2};
-use njang::{
+use njang::prelude::{
     ClassificationModel, LinearModelSolver, LinearRegression as LinReg, LinearRegressionSettings,
     LogisticRegression as LogReg, LogisticRegressionSettings, RegressionModel,
 };

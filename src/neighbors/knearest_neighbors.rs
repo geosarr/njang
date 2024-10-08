@@ -39,7 +39,7 @@ impl<K> Node<K> {
 /// Represents a nearest neighbor point
 #[derive(Debug, PartialEq, Clone)]
 pub struct KthNearestNeighbor<D> {
-    /// Number of appearance in the tree when building it.
+    /// Id of point.
     pub number: usize,
     /// Distance from query point.
     pub dist: D,
@@ -243,14 +243,13 @@ where
         }
         let dimension = keys[0].1.length();
         let n = keys.len();
-        let dim_max_spread = find_dim_max_spread(keys, 0, n - 1, dimension);
+        let dim_max_spread = find_dim_max_spread(keys, 0, n, dimension);
         let median = n / 2;
         keys[0..n].sort_by(|a, b| {
             a.1[dim_max_spread]
                 .partial_cmp(&b.1[dim_max_spread])
                 .unwrap()
         });
-        println!("{:?}", keys);
         let root_key = keys[median].1.clone();
         let mut root = Some(Box::new(Node::new(
             root_key,
@@ -283,17 +282,17 @@ fn build_tree<K>(
         return;
     }
     if end == start + 1 {
+        let (number, key) = (&keys[start].0, &keys[start].1);
+        let new_node = Some(Box::new(Node::new(key.clone(), *number, None)));
         match child_type {
             ChildType::Left => {
                 if let Some(ref mut nod) = node {
-                    let (number, key) = (&keys[start].0, &keys[start].1);
-                    nod.left = Some(Box::new(Node::new(key.clone(), *number, None)));
+                    nod.left = new_node;
                 }
             }
             ChildType::Right => {
                 if let Some(ref mut nod) = node {
-                    let (number, key) = (&keys[end].0, &keys[end].1);
-                    nod.right = Some(Box::new(Node::new(key.clone(), *number, None)));
+                    nod.right = new_node;
                 }
             }
         };
@@ -305,9 +304,7 @@ fn build_tree<K>(
             .partial_cmp(&b.1[dim_max_spread])
             .unwrap()
     });
-    println!("\nchild:\t{:?}\n\t{:?}", child_type, keys);
     let median = start + (end - start) / 2;
-    println!("\nMedian:\t{median}");
     match child_type {
         ChildType::Left => {
             if let Some(ref mut nod) = node {
@@ -390,12 +387,6 @@ where
             max_spread = spread;
         }
     }
-    println!(
-        "\nDim max spread: {:?}, max spred: {:?}, v: {:?}",
-        dim_max_spread,
-        max_spread,
-        &keys[start..end]
-    );
     dim_max_spread
 }
 fn k_nearest_neighbors<K, D>(
@@ -674,11 +665,13 @@ fn kd() {
     .into_iter()
     .enumerate()
     .collect::<Vec<_>>();
-    let k = KdTree::from_vec(&mut v);
+    let k = KdTree::from_vec(&mut v).unwrap();
     print!("{:#?}", k);
-    print!(
-        "{:#?}",
-        k.unwrap()
-            .k_nearest_neighbors(&array![9., 4.], 4, |a, b| (a - b).minkowsky(2.))
-    );
+    let mut neighbors = k
+        .k_nearest_neighbors(&array![9., 4.], 4, |a, b| (a - b).minkowsky(2.))
+        .unwrap();
+    print!("{:#?}", neighbors.delete());
+    print!("{:#?}", neighbors.delete());
+    print!("{:#?}", neighbors.delete());
+    print!("{:#?}", neighbors.delete());
 }
