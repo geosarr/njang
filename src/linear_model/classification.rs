@@ -8,8 +8,8 @@ use num_traits::Float;
 
 use super::{LinearModelSolver, LinearRegressionSettings};
 use crate::traits::{ClassificationModel, Container, Model, RegressionModel, Scalar};
+use hashbrown::HashSet;
 pub use ridge_classification::{RidgeClassification, RidgeClassificationSettings};
-use std::collections::HashSet;
 
 pub(crate) fn unique_labels<L>(labels: L) -> Vec<L::Item>
 where

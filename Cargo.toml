@@ -19,6 +19,7 @@ rand_chacha = { version = "0.3.1" }
 ndarray-rand = { version = "0.14.0" }
 rayon = { version = "1.10.0" }
 thiserror-no-std = "2.0.2"
+hashbrown = "0.15.0"
 
 [features]
 default = ["std"]
