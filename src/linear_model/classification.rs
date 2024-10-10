@@ -6,8 +6,7 @@ pub use logistic_regression::*;
 use ndarray::{Array1, Array2, Axis};
 use num_traits::Float;
 
-use super::{LinearModelSolver, LinearRegressionSettings};
-use crate::traits::{ClassificationModel, Container, Model, RegressionModel, Scalar};
+use crate::traits::Scalar;
 use hashbrown::HashSet;
 pub use ridge_classification::{RidgeClassification, RidgeClassificationSettings};
 

@@ -1,14 +1,21 @@
-use core::ops::{Add, Div, Index, Mul, Sub};
-use std::process::Output;
+use core::ops::{Add, Index, Mul, Sub};
 
 use num_traits::{Float, FromPrimitive, One, Zero};
 
 use crate::neighbors::KthNearestNeighbor;
 use crate::traits::{Algebra, Container};
+
+use super::BinaryHeap;
 #[derive(Debug, Clone)]
-struct Point<K> {
-    number: usize,
-    value: K,
+pub struct Point<K> {
+    pub number: usize,
+    pub value: K,
+}
+
+impl<K: PartialEq> PartialEq for Point<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.number.eq(&other.number) && self.value.eq(&other.value)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -42,8 +49,13 @@ impl<K, T> Node<K, T> {
 
 #[derive(Debug)]
 pub struct BallTree<K: Container> {
-    root: Option<Node<K, K::Elem>>,
+    root: Option<Box<Node<K, K::Elem>>>,
     len: usize,
+}
+impl<K: Container> Default for BallTree<K> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<K: Container> BallTree<K> {
@@ -110,15 +122,43 @@ impl<K: Container> BallTree<K> {
             return None;
         }
         let len = points.len();
-        let root = Some(build_tree(Node::new(), points, &distance, leaf_size));
+        let root = Some(Box::new(build_tree(
+            Node::new(),
+            points,
+            &distance,
+            leaf_size,
+        )));
         Some(Self { root, len })
+    }
+
+    pub fn k_nearest_neighbors<D>(
+        &self,
+        key: &K,
+        k: usize,
+        distance: D,
+    ) -> Option<BinaryHeap<KthNearestNeighbor<Point<K>, K::Elem>>>
+    where
+        K: Container + core::fmt::Debug + PartialEq + Clone,
+        K::Elem: Float,
+        D: Fn(&K, &K) -> K::Elem,
+    {
+        if self.root.is_none() | (k == 0) {
+            return None;
+        }
+        Some(k_nearest_neighbors(
+            self.root.as_ref().unwrap(),
+            key,
+            BinaryHeap::with_capacity(k + 1),
+            k,
+            &distance,
+        ))
     }
 }
 
-fn centroid<K: Container>(points: &[Point<K>]) -> Option<K>
+fn centroid<K>(points: &[Point<K>]) -> Option<K>
 where
     K::Elem: Float + FromPrimitive + Mul<K, Output = K>,
-    for<'a> K: Add<&'a K, Output = K> + Clone,
+    for<'a> K: Container + Add<&'a K, Output = K> + Clone,
 {
     if points.is_empty() {
         return None;
@@ -148,7 +188,7 @@ where
     let mut child = None;
     let mut radius = K::Elem::zero();
     for point in points {
-        let dist = distance(&point.value, &pivot);
+        let dist = distance(&point.value, pivot);
         if dist > radius {
             radius = dist;
             child = Some(point);
@@ -170,12 +210,11 @@ where
     D: Fn(&K, &K) -> K::Elem,
 {
     let pivot = centroid(&points).unwrap();
-    let mut radius = K::Elem::zero();
-    let (radius, child1) = fursthest_from(&pivot, &points, &distance);
+    let (radius, child1) = fursthest_from(&pivot, &points, distance);
     node.pivot = Some(pivot);
     node.radius = Some(radius);
     // println!("{:#?}\n", root);
-    let child2 = fursthest_from(&child1.unwrap().value, &points, &distance).1;
+    let child2 = fursthest_from(&child1.unwrap().value, &points, distance).1;
     let (child1, child2) = (child1.unwrap().clone(), child2.unwrap().clone());
     let mut child1_points = Vec::with_capacity(1 + points.len() / 2);
     let mut child2_points = Vec::with_capacity(1 + points.len() / 2);
@@ -199,21 +238,76 @@ where
         leaf.points = Some(child2_points);
         node.child2 = Some(Box::new(leaf));
     } else if !child2_points.is_empty() {
-        node.child2 = Some(Box::new(build_tree(
-            Node::new(),
-            child2_points,
-            distance,
-            leaf_size,
-        )));
+        let child = build_tree(Node::new(), child2_points, distance, leaf_size);
+        node.child2 = Some(Box::new(child));
     }
-    return node;
+    node
+}
+
+fn k_nearest_neighbors<K, D>(
+    node: &Node<K, K::Elem>,
+    key: &K,
+    mut the_bests: BinaryHeap<KthNearestNeighbor<Point<K>, K::Elem>>,
+    k: usize,
+    distance: &D,
+) -> BinaryHeap<KthNearestNeighbor<Point<K>, K::Elem>>
+where
+    K: Container + core::fmt::Debug + PartialEq + Clone,
+    K::Elem: Float,
+    D: Fn(&K, &K) -> K::Elem,
+{
+    if !the_bests.is_empty() && !node.is_leaf() {
+        let dist_key_from_node = distance(key, node.pivot.as_ref().unwrap()) - node.radius.unwrap();
+        if dist_key_from_node >= distance(key, &the_bests.maximum().unwrap().point.value) {
+            return the_bests;
+        }
+    }
+    if node.is_leaf() {
+        for point in node.points.as_ref().unwrap() {
+            let dist = distance(key, &point.value);
+            if !the_bests.is_empty() {
+                if dist < distance(key, &the_bests.maximum().unwrap().point.value) {
+                    the_bests.insert(KthNearestNeighbor {
+                        point: point.clone(),
+                        dist,
+                    });
+                }
+            } else {
+                the_bests.insert(KthNearestNeighbor {
+                    point: point.clone(),
+                    dist,
+                });
+            }
+            if the_bests.len() > k {
+                the_bests.delete();
+            }
+        }
+        return the_bests;
+    }
+    // if let Some(ref pivot) = node.pivot{
+    if let Some(ref child1) = node.child1 {
+        the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+    }
+    if let Some(ref child2) = node.child2 {
+        the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
+    }
+    // };
+    the_bests
 }
 
 #[test]
 fn ball() {
     use ndarray::*;
-    let points = vec![array![0f32, 1.], array![1., 1.]];
-    println!("{:?}", points);
-    let tree = BallTree::<Array1<f32>>::from(points, |a, b| (a - b).minkowsky(2.), 2);
+    let points = [
+        array![5., 4.],
+        array![2., 6.],
+        array![13., 3.],
+        array![3., 1.],
+        array![10., 2.],
+        array![8., 7.],
+    ];
+    let tree = BallTree::<Array1<f32>>::from(points, |a, b| (a - b).minkowsky(2.), 2).unwrap();
     println!("{:#?}", tree);
+    let knn = tree.k_nearest_neighbors(&array![9., 4.], 4, |a, b| (a - b).minkowsky(2.));
+    println!("\n{:#?}", knn);
 }

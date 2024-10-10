@@ -1,9 +1,6 @@
-use rand_chacha::ChaCha20Rng;
-
 extern crate alloc;
 
 use alloc::fmt::format;
-use core::{hash::Hash, ops::Sub};
 use num_traits::Float;
 
 use crate::linear_model::LinearModelSolver;
@@ -13,13 +10,13 @@ use crate::{
     error::NjangError,
     linear_model::{
         classification::{argmax, dummies, unique_labels},
-        preprocess, randu_2d, LinearModelParameter,
+        randu_2d, LinearModelParameter,
     },
     solver::stochastic_gradient_descent,
     traits::{ClassificationModel, Container, Label, Model, Scalar},
 };
 
-use ndarray::{Array1, Array2, Axis, ScalarOperand};
+use ndarray::{Array1, Array2, Axis};
 
 use crate::linear_model::LinearModelInternal;
 
@@ -177,7 +174,6 @@ impl<T: Scalar, L: Label> ClassificationModel for LogisticRegression<Array2<T>, 
 
 #[test]
 fn log() {
-    use crate::traits::Algebra;
     use ndarray::array;
 
     let x = array![[0., 0., 1.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]];

@@ -1,11 +1,25 @@
 //! Neighboors finding algorithms.
 
-use core::mem::replace;
+use core::{cmp::Ordering, mem::replace};
 mod ball_tree;
 pub use ball_tree::*;
 
 mod kd_tree;
 pub use kd_tree::*;
+
+/// Represents a nearest neighbor point
+#[derive(Debug, PartialEq, Clone)]
+pub struct KthNearestNeighbor<P, D> {
+    /// Id/value of this point.
+    pub point: P,
+    /// Distance from a point.
+    pub dist: D,
+}
+impl<P: PartialEq, D: PartialOrd> PartialOrd for KthNearestNeighbor<P, D> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.dist.partial_cmp(&other.dist)
+    }
+}
 
 /// Implementation of priority queues using a `Vec` structure
 /// # Examples
@@ -206,7 +220,7 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
         } else {
             let res = self.vec[1].clone();
             // Put the last object at the beginning of the root of the tree
-            self.vec[1] = replace(&mut self.vec[self.n - 1], None);
+            self.vec[1] = self.vec[self.n - 1].take();
             // sink the root object
             self.sink(1, self.n);
             self.n -= 1;

@@ -86,7 +86,7 @@ where
     type SelectionOutput = Array<S::Elem, D>;
     type LenghtOutput = usize;
     fn dimension(&self) -> &[usize] {
-        Self::shape(&self)
+        Self::shape(self)
     }
     fn selection(&self, axis: usize, indices: &[usize]) -> Self::SelectionOutput {
         Self::select(self, Axis(axis), indices)

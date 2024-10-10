@@ -56,12 +56,7 @@ impl LogisticRegression {
             reg: LogReg::new(settings),
         })
     }
-    pub fn fit<'py>(
-        &mut self,
-        py: Python<'py>,
-        x: PyReadonlyArray2<f64>,
-        y: PyReadonlyArray1<isize>,
-    ) -> PyResult<()> {
+    pub fn fit(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray1<isize>) -> PyResult<()> {
         let _ = self
             .reg
             .fit(&x.as_array().to_owned(), &y.as_array().to_owned());

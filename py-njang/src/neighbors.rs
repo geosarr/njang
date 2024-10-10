@@ -59,7 +59,7 @@ impl KDTree {
                 let mut res = heap
                     .to_vec()
                     .iter()
-                    .map(|n| (n.number, n.dist))
+                    .map(|n| (n.point, n.dist))
                     .collect::<Vec<_>>();
                 res.sort_by(|a, b| a.1.total_cmp(&b.1));
                 Ok(res)
@@ -77,31 +77,31 @@ impl BallTree {
     #[new]
     pub fn new(x: PyReadonlyArray2<f64>, leaf_size: isize) -> PyResult<Self> {
         let x = x.as_array();
-        let mut keys = x.axis_iter(Axis(0)).map(|row| row.to_owned());
+        let keys = x.axis_iter(Axis(0)).map(|row| row.to_owned());
         Ok(Self {
             tree: RustBallTree::from(keys, |a, b| (a - b).l2_norm(), leaf_size as usize).unwrap(),
         })
     }
-    // pub fn query(&self, key: PyReadonlyArray1<f64>, k: isize) ->
-    // PyResult<Vec<(usize, f64)>> {     if k >= 0 {
-    //         if let Some(heap) =
-    //             self.tree
-    //                 .k_nearest_neighbors(&key.as_array().to_owned(), k as usize,
-    // |a, b| {                     (a - b).l2_norm()
-    //                 })
-    //         {
-    //             let mut res = heap
-    //                 .to_vec()
-    //                 .iter()
-    //                 .map(|n| (n.number, n.dist))
-    //                 .collect::<Vec<_>>();
-    //             res.sort_by(|a, b| a.1.total_cmp(&b.1));
-    //             Ok(res)
-    //         } else {
-    //             Ok(vec![])
-    //         }
-    //     } else {
-    //         Err(PyValueError::new_err("`k` should be >= 0"))
-    //     }
-    // }
+    pub fn query(&self, key: PyReadonlyArray1<f64>, k: isize) -> PyResult<Vec<(usize, f64)>> {
+        if k >= 0 {
+            if let Some(heap) =
+                self.tree
+                    .k_nearest_neighbors(&key.as_array().to_owned(), k as usize, |a, b| {
+                        (a - b).l2_norm()
+                    })
+            {
+                let mut res = heap
+                    .to_vec()
+                    .iter()
+                    .map(|n| (n.point.number, n.dist))
+                    .collect::<Vec<_>>();
+                res.sort_by(|a, b| a.1.total_cmp(&b.1));
+                Ok(res)
+            } else {
+                Ok(vec![])
+            }
+        } else {
+            Err(PyValueError::new_err("`k` should be >= 0"))
+        }
+    }
 }

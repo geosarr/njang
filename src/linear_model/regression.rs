@@ -33,11 +33,10 @@ pub struct LinearRegressionSettings<T> {
     /// - if `fit_intercept = false`, then the prediction of a sample `x` is
     ///   given by `x.dot(coef)`
     /// - if `fit_intercept = true`, then the prediction of a sample `x` is
-    ///   given by `x.dot(coef) + intercept`
-    /// where `intercept = Y_mean - X_mean.dot(coef)`, with `X_mean`
-    /// designating the average of the training predictors `X` (i.e features
-    /// mean) and `Y_mean` designating the average(s) of target(s) `Y`, `dot`
-    /// is the matrix multiplication.
+    ///   given by `x.dot(coef) + intercept`, where `intercept = Y_mean -
+    ///   X_mean.dot(coef)`, with `X_mean` designating the average of the
+    ///   training predictors `X` (i.e features mean) and `Y_mean` designating
+    ///   the average(s) of target(s) `Y`, `dot` is the matrix multiplication.
     pub fit_intercept: bool,
     /// Optimization method, see [`LinearModelSolver`].
     pub solver: LinearModelSolver,
@@ -444,7 +443,7 @@ where
     for k in 0..n_samples {
         let xi = x.selection(0, &[k]).to_owned();
         let yi = y.selection(0, &[k]).to_owned();
-        let gradient = scaled_grad(&xi, &yi, &coef, settings);
+        let gradient = scaled_grad(&xi, &yi, coef, settings);
         for t in 0..n_targets {
             let start = t * n_samples;
             (gradient.column(t).to_owned()).assign_to(grad.slice_mut(s!(.., start + k)));
@@ -455,7 +454,7 @@ where
             .sum_axis(Axis(1))
             .assign_to(sum_grad.slice_mut(s!(.., t)));
     }
-    return (grad, sum_grad);
+    (grad, sum_grad)
 }
 impl_regression!(Ix1, Ix0, randu_1d, reshape_to_1d, reshape_to_2d);
 impl_regression!(Ix2, Ix1, randu_2d, identity, reshape_to_2d);

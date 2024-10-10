@@ -1,6 +1,4 @@
-use ndarray::*;
 use num_traits::Zero;
-use rand_chacha::{ChaCha20Core, ChaCha20Rng};
 
 use core::{
     cmp::Ordering,
@@ -8,12 +6,11 @@ use core::{
     ops::{Index, Mul, Sub},
 };
 
-use crate::{
-    error::NjangError,
-    traits::{Algebra, Container},
-};
+use crate::traits::{Algebra, Container};
 
 use crate::neighbors::BinaryHeap;
+
+use super::KthNearestNeighbor;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Node<K> {
@@ -33,20 +30,6 @@ impl<K> Node<K> {
             left: None,
             right: None,
         }
-    }
-}
-
-/// Represents a nearest neighbor point
-#[derive(Debug, PartialEq, Clone)]
-pub struct KthNearestNeighbor<D> {
-    /// Id of point.
-    pub number: usize,
-    /// Distance from a point.
-    pub dist: D,
-}
-impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.dist.partial_cmp(&other.dist)
     }
 }
 
@@ -173,7 +156,7 @@ where
     /// assert_eq!(bt.len(), 2);
     /// ```
     pub fn insert(&mut self, key: K) {
-        let mut level = 0;
+        let level = 0;
         Self::put(&mut self.root, key, self.len, level);
         self.len += 1;
     }
@@ -207,10 +190,10 @@ where
     /// let mut knn = bt
     ///     .k_nearest_neighbors(&array![9., 4.].view(), 4, |a, b| (a - b).minkowsky(2.))
     ///     .unwrap();
-    /// assert_eq!(2, knn.delete().unwrap().number);
-    /// assert_eq!(0, knn.delete().unwrap().number);
-    /// assert_eq!(5, knn.delete().unwrap().number);
-    /// assert_eq!(4, knn.delete().unwrap().number);
+    /// assert_eq!(2, knn.delete().unwrap().point);
+    /// assert_eq!(0, knn.delete().unwrap().point);
+    /// assert_eq!(5, knn.delete().unwrap().point);
+    /// assert_eq!(4, knn.delete().unwrap().point);
     /// ```
     ///
     /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
@@ -219,7 +202,7 @@ where
         key: &K,
         k: usize,
         distance: D,
-    ) -> Option<BinaryHeap<KthNearestNeighbor<K::Elem>>>
+    ) -> Option<BinaryHeap<KthNearestNeighbor<usize, K::Elem>>>
     where
         K: Algebra + Debug,
         K::Elem: Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
@@ -379,8 +362,8 @@ where
     let (mut dim_max_spread, mut max_spread) = (0, K::Output::zero());
     for dim in 0..dimension {
         let (mut min, mut max) = (keys[start].1[dim], keys[start].1[dim]);
-        for index in start + 1..end {
-            let val = keys[index].1[dim];
+        for (_, key) in keys.iter().take(end).skip(start + 1) {
+            let val = key[dim];
             if val > max {
                 max = val;
             }
@@ -399,10 +382,10 @@ where
 fn k_nearest_neighbors<K, D>(
     node: &Option<Box<Node<K>>>,
     key: &K,
-    mut the_bests: BinaryHeap<KthNearestNeighbor<K::Elem>>,
+    mut the_bests: BinaryHeap<KthNearestNeighbor<usize, K::Elem>>,
     k: usize,
     distance: &D,
-) -> BinaryHeap<KthNearestNeighbor<K::Elem>>
+) -> BinaryHeap<KthNearestNeighbor<usize, K::Elem>>
 where
     K: Index<usize, Output = K::Elem> + Algebra<LenghtOutput = usize> + Debug,
     K::Elem: PartialOrd + Copy + Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
@@ -412,7 +395,7 @@ where
         let dist = distance(&nod.key, key);
         if the_bests.len() < k {
             the_bests.insert(KthNearestNeighbor {
-                number: nod.number,
+                point: nod.number,
                 dist,
             });
         } else if dist < the_bests.maximum().unwrap().dist {
@@ -420,7 +403,7 @@ where
             // empty, which guaranties the existence of a maximum.
             the_bests.delete();
             the_bests.insert(KthNearestNeighbor {
-                number: nod.number,
+                point: nod.number,
                 dist,
             });
         }
@@ -441,7 +424,8 @@ where
 
 #[test]
 fn kd() {
-    let mut v = [
+    use ndarray::array;
+    let v = [
         array![5., 4.],
         array![2., 6.],
         array![13., 3.],

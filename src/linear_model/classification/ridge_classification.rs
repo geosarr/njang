@@ -1,4 +1,3 @@
-use core::hash::Hash;
 use ndarray::{Array1, Array2, Axis};
 use num_traits::Float;
 
@@ -62,7 +61,7 @@ impl<T: Scalar, L: Label> ClassificationModel for RidgeClassification<Array2<T>,
             .axis_iter_mut(Axis(0))
             .map(|mut row| {
                 let norm = row.sum();
-                row.iter_mut().for_each(|p| *p = *p / norm);
+                row.iter_mut().for_each(|p| *p /= norm);
             })
             .for_each(drop);
         Ok(raw_prediction)
