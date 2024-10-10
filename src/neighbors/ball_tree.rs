@@ -5,18 +5,7 @@ use num_traits::{Float, FromPrimitive, One, Zero};
 use crate::neighbors::KthNearestNeighbor;
 use crate::traits::{Algebra, Container};
 
-use super::BinaryHeap;
-#[derive(Debug, Clone)]
-pub struct Point<K> {
-    pub number: usize,
-    pub value: K,
-}
-
-impl<K: PartialEq> PartialEq for Point<K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.number.eq(&other.number) && self.value.eq(&other.value)
-    }
-}
+use super::{BinaryHeap, Point};
 
 #[derive(Clone, Debug)]
 struct Node<K, T> {

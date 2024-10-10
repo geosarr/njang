@@ -10,7 +10,7 @@ use crate::traits::{Algebra, Container};
 
 use crate::neighbors::BinaryHeap;
 
-use super::KthNearestNeighbor;
+use super::{KthNearestNeighbor, Point};
 
 #[derive(Clone, Debug, PartialEq)]
 struct Node<K> {
@@ -154,11 +154,11 @@ where
     ///
     /// # Example
     /// ```
-    /// Array1<f32>
+    /// use ndarray::{array, Array1};
     /// use njang::prelude::*;
     /// let mut bt = KdTree::<Array1<f32>>::new();
-    /// bt.insert([-1.]);
-    /// bt.insert([-2.]);
+    /// bt.insert(array![-1.]);
+    /// bt.insert(array![-2.]);
     /// assert_eq!(bt.len(), 2);
     /// ```
     pub fn insert(&mut self, key: K) {
@@ -231,23 +231,27 @@ where
         K: Clone + Index<usize> + Debug,
         K::Elem: Zero + Sub<K::Elem, Output = K::Elem> + Debug,
     {
-        let mut keys = keys.into_iter().enumerate().collect::<Vec<_>>();
+        let mut keys = keys
+            .into_iter()
+            .enumerate()
+            .map(|(number, value)| Point { number, value })
+            .collect::<Vec<_>>();
         if keys.is_empty() {
             return None;
         }
-        let dimension = keys[0].1.length();
+        let dimension = keys[0].value.length();
         let len = keys.len();
         let dim_max_spread = find_dim_max_spread(&keys, 0, len, dimension);
         let median = len / 2;
         keys[0..len].sort_by(|a, b| {
-            a.1[dim_max_spread]
-                .partial_cmp(&b.1[dim_max_spread])
+            a.value[dim_max_spread]
+                .partial_cmp(&b.value[dim_max_spread])
                 .unwrap()
         });
-        let root_key = keys[median].1.clone();
+        let root_key = keys[median].value.clone();
         let mut root = Some(Box::new(Node::new(
             root_key,
-            keys[median].0,
+            keys[median].number,
             Some(dim_max_spread),
         )));
         build_tree(&mut root, ChildType::Left, &mut keys, 0, median, dimension);
@@ -271,7 +275,7 @@ enum ChildType {
 fn build_tree<K>(
     node: &mut Option<Box<Node<K>>>,
     child_type: ChildType,
-    keys: &mut Vec<(usize, K)>,
+    keys: &mut Vec<Point<K>>,
     start: usize,
     end: usize,
     dimension: usize,
@@ -283,7 +287,7 @@ fn build_tree<K>(
         return;
     }
     if end == start + 1 {
-        let (number, key) = (&keys[start].0, &keys[start].1);
+        let (number, key) = (&keys[start].number, &keys[start].value);
         let new_node = Some(Box::new(Node::new(key.clone(), *number, None)));
         match child_type {
             ChildType::Left => {
@@ -301,8 +305,8 @@ fn build_tree<K>(
     }
     let dim_max_spread = find_dim_max_spread(&*keys, start, end, dimension);
     keys[start..end].sort_by(|a, b| {
-        a.1[dim_max_spread]
-            .partial_cmp(&b.1[dim_max_spread])
+        a.value[dim_max_spread]
+            .partial_cmp(&b.value[dim_max_spread])
             .unwrap()
     });
     let median = start + (end - start) / 2;
@@ -310,8 +314,8 @@ fn build_tree<K>(
         ChildType::Left => {
             if let Some(ref mut nod) = node {
                 nod.left = Some(Box::new(Node::new(
-                    keys[median].1.clone(),
-                    keys[median].0,
+                    keys[median].value.clone(),
+                    keys[median].number,
                     Some(dim_max_spread),
                 )));
                 build_tree(
@@ -335,8 +339,8 @@ fn build_tree<K>(
         ChildType::Right => {
             if let Some(ref mut nod) = node {
                 nod.right = Some(Box::new(Node::new(
-                    keys[median].1.clone(),
-                    keys[median].0,
+                    keys[median].value.clone(),
+                    keys[median].number,
                     Some(dim_max_spread),
                 )));
                 build_tree(
@@ -360,16 +364,16 @@ fn build_tree<K>(
     };
 }
 
-fn find_dim_max_spread<K>(keys: &[(usize, K)], start: usize, end: usize, dimension: usize) -> usize
+fn find_dim_max_spread<K>(keys: &[Point<K>], start: usize, end: usize, dimension: usize) -> usize
 where
     K: Clone + Index<usize> + Debug,
     K::Output: PartialOrd + Zero + Copy + Sub<K::Output, Output = K::Output> + Debug,
 {
     let (mut dim_max_spread, mut max_spread) = (0, K::Output::zero());
     for dim in 0..dimension {
-        let (mut min, mut max) = (keys[start].1[dim], keys[start].1[dim]);
-        for (_, key) in keys.iter().take(end).skip(start + 1) {
-            let val = key[dim];
+        let (mut min, mut max) = (keys[start].value[dim], keys[start].value[dim]);
+        for key in keys.iter().take(end).skip(start + 1) {
+            let val = key.value[dim];
             if val > max {
                 max = val;
             }

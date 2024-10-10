@@ -1,13 +1,19 @@
 //! Neighboors finding algorithms.
 
-use core::{cmp::Ordering, mem::replace};
+use core::{
+    cmp::Ordering,
+    mem::replace,
+    ops::{Add, Mul, Sub},
+};
 mod ball_tree;
 pub use ball_tree::*;
 
 mod kd_tree;
 pub use kd_tree::*;
+use ndarray::{Array1, Array2, Axis};
+use num_traits::{Float, FromPrimitive};
 
-use crate::traits::Container;
+use crate::traits::{Algebra, Container, RegressionModel, Scalar};
 
 // #[derive(Debug, Clone)]
 pub enum NearestNeighborsSolver {
@@ -28,19 +34,120 @@ pub struct NearestNeighborsSettings<D> {
 }
 pub struct NearestNeighbors<D, K: Container> {
     pub settings: NearestNeighborsSettings<D>,
-    tree: Tree<K>,
+    tree: Option<Tree<K>>,
 }
 
 impl<D: Fn(&K, &K) -> K::Elem, K: Container> NearestNeighbors<D, K> {
     pub fn new(settings: NearestNeighborsSettings<D>) -> Self {
-        let tree = match settings.solver {
-            NearestNeighborsSolver::KdTree => Tree::KdTree(KdTree::<K>::new()),
-            NearestNeighborsSolver::BallTree => Tree::BallTree(BallTree::<K>::new()),
-        };
-        Self { settings, tree }
+        Self {
+            settings,
+            tree: None,
+        }
     }
 }
 
+impl<D, T> RegressionModel for NearestNeighbors<D, Array1<T>>
+where
+    // K: Container + Clone +
+    // core::ops::Index<usize> +
+    // core::fmt::Debug + Algebra,
+    T: Scalar + Mul<Array1<T>, Output = Array1<T>>,
+    // for<'a> K: Add<&'a K, Output = K> + Clone,
+    // for<'a> &'a K: Sub<&'a K, Output = K>,
+    D: Fn(&Array1<T>, &Array1<T>) -> T,
+    //     Target: Algebra<Elem = K::Elem>,
+{
+    type FitResult = Result<(), ()>;
+    type PredictResult = Result<(), ()>;
+    type X = Array2<T>;
+    type Y = Array2<T>;
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
+        let keys = x.axis_iter(Axis(0)).map(|row| row.to_owned());
+        match self.settings.solver {
+            NearestNeighborsSolver::BallTree => {
+                let mut tree = BallTree::from(
+                    keys,
+                    &self.settings.distance,
+                    self.settings.leaf_size.unwrap(),
+                );
+                if let Some(tree) = tree {
+                    self.tree = Some(Tree::BallTree(tree));
+                }
+            }
+            NearestNeighborsSolver::KdTree => {
+                let mut tree = KdTree::from(keys);
+                if let Some(tree) = tree {
+                    self.tree = Some(Tree::KdTree(tree));
+                }
+            }
+        };
+        Ok(())
+    }
+    fn predict(&self, x: &Self::X) -> Self::PredictResult {
+        for point in x.axis_iter(Axis(0)) {
+            if let Some(ref tree) = self.tree {
+                match tree {
+                    Tree::KdTree(kd_tree) => {
+                        kd_tree
+                            .k_nearest_neighbors(
+                                &point.to_owned(),
+                                self.settings.n_neighbors,
+                                &self.settings.distance,
+                            )
+                            .unwrap()
+                            .delete()
+                            .unwrap()
+                            .point
+                    }
+                    Tree::BallTree(ball_tree) => {
+                        ball_tree
+                            .k_nearest_neighbors(
+                                &point.to_owned(),
+                                self.settings.n_neighbors,
+                                &self.settings.distance,
+                            )
+                            .unwrap()
+                            .delete()
+                            .unwrap()
+                            .point
+                            .number
+                    }
+                };
+            }
+        }
+        Err(())
+    }
+}
+
+#[test]
+fn neighbors() {
+    use ndarray::array;
+    let x = array![[5., 4.], [2., 6.], [13., 3.], [3., 1.], [10., 2.], [8., 7.]];
+    let y = array![[0., 0.], [1., 1.], [2., 2.], [3., 3.], [4., 4.], [5., 5.]];
+    let settings = NearestNeighborsSettings {
+        solver: NearestNeighborsSolver::BallTree,
+        distance: |a: &Array1<f32>, b: &Array1<f32>| (a - b).l2_norm(),
+        n_neighbors: 3,
+        leaf_size: Some(1),
+    };
+    let mut neighbor = NearestNeighbors::<_, Array1<f32>>::new(settings);
+    neighbor.fit(&x, &y);
+
+    // let mut neighbors =
+    // print!("{:#?}", neighbors.delete());
+}
+
+#[derive(Debug, Clone)]
+pub struct Point<K> {
+    pub number: usize,
+    pub value: K,
+}
+
+impl<K: PartialEq> PartialEq for Point<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.number.eq(&other.number) && self.value.eq(&other.value)
+    }
+}
 /// Represents a nearest neighbor point
 #[derive(Debug, PartialEq, Clone)]
 pub struct KthNearestNeighbor<P, D> {
