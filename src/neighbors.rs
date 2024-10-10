@@ -7,6 +7,40 @@ pub use ball_tree::*;
 mod kd_tree;
 pub use kd_tree::*;
 
+use crate::traits::Container;
+
+// #[derive(Debug, Clone)]
+pub enum NearestNeighborsSolver {
+    KdTree,
+    BallTree,
+}
+// #[derive(Debug, Clone)]
+enum Tree<K: Container> {
+    KdTree(KdTree<K>),
+    BallTree(BallTree<K>),
+}
+// #[derive(Debug, Clone)]
+pub struct NearestNeighborsSettings<D> {
+    solver: NearestNeighborsSolver,
+    distance: D,
+    n_neighbors: usize,
+    leaf_size: Option<usize>,
+}
+pub struct NearestNeighbors<D, K: Container> {
+    pub settings: NearestNeighborsSettings<D>,
+    tree: Tree<K>,
+}
+
+impl<D: Fn(&K, &K) -> K::Elem, K: Container> NearestNeighbors<D, K> {
+    pub fn new(settings: NearestNeighborsSettings<D>) -> Self {
+        let tree = match settings.solver {
+            NearestNeighborsSolver::KdTree => Tree::KdTree(KdTree::<K>::new()),
+            NearestNeighborsSolver::BallTree => Tree::BallTree(BallTree::<K>::new()),
+        };
+        Self { settings, tree }
+    }
+}
+
 /// Represents a nearest neighbor point
 #[derive(Debug, PartialEq, Clone)]
 pub struct KthNearestNeighbor<P, D> {

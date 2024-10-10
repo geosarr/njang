@@ -3,32 +3,27 @@ use ndarray_linalg::Lapack;
 use ndarray_rand::rand_distr::uniform::SampleUniform;
 use num_traits::{Float, FromPrimitive, One, Zero};
 
-pub trait Model<'a> {
-    type Data;
-    type FitResult;
-    /// Trains the model.
-    fn fit(&mut self, data: &'a Self::Data) -> Self::FitResult;
-}
-
 /// Implements classic steps of a regression model.
-pub trait RegressionModel: for<'a> Model<'a> {
+pub trait RegressionModel {
     type X;
     type Y;
+    type FitResult;
     type PredictResult;
     /// Trains the model.
-    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as Model<'_>>::FitResult;
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult;
     /// Predicts instances if possible.
     fn predict(&self, x: &Self::X) -> Self::PredictResult;
 }
 
 /// Implements classic steps of a classification model.
-pub trait ClassificationModel: for<'a> Model<'a> {
+pub trait ClassificationModel {
     type X;
     type Y;
+    type FitResult;
     type PredictResult;
     type PredictProbaResult;
     /// Trains the model.
-    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as Model<'_>>::FitResult;
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult;
     /// Predicts instances if possible.
     fn predict(&self, x: &Self::X) -> Self::PredictResult;
     /// Estimates the probability(ies) of instances if possible.

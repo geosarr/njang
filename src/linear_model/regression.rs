@@ -3,7 +3,7 @@ use crate::error::NjangError;
 use crate::{
     linear_model::{cholesky, exact, preprocess, qr, randu_1d, randu_2d},
     solver::{batch_gradient_descent, stochastic_average_gradient, stochastic_gradient_descent},
-    traits::{Algebra, Container, Model, RegressionModel, Scalar},
+    traits::{Algebra, Container, RegressionModel, Scalar},
 };
 use core::convert::identity;
 use core::ops::Add;
@@ -354,18 +354,21 @@ macro_rules! impl_regression {
             }
         }
 
-        impl<'a, T: Scalar> Model<'a> for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>> {
+        impl<'a, T: Scalar> RegressionModel
+            for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
+        {
+            type X = Array2<T>;
+            type Y = Array<T, $ix>;
             type FitResult = Result<(), NjangError>;
-            type Data = (&'a Array2<T>, &'a Array<T, $ix>);
-            fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
-                let (x, y) = data;
+            type PredictResult = Result<Array<T, $ix>, ()>;
+            fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
                 let (xlen, ylen) = (x.nrows(), y.shape()[0]);
                 if xlen != ylen {
                     return Err(NjangError::NotMatchedLength { xlen, ylen });
                 }
                 let fit_intercept = self.settings.fit_intercept;
                 if fit_intercept {
-                    let (x_centered, x_mean, y_centered, y_mean) = preprocess(*x, *y);
+                    let (x_centered, x_mean, y_centered, y_mean) = preprocess(x, y);
                     let coef = match self.solve(&x_centered, &y_centered, fit_intercept) {
                         Err(error) => return Err(error),
                         Ok(value) => value,
@@ -379,17 +382,6 @@ macro_rules! impl_regression {
                     });
                 }
                 Ok(())
-            }
-        }
-        impl<'a, T: Scalar> RegressionModel
-            for LinearRegression<Array<T, $ix>, Array<T, $ix_smaller>>
-        {
-            type X = Array2<T>;
-            type Y = Array<T, $ix>;
-            type PredictResult = Result<Array<T, $ix>, ()>;
-            fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as Model<'_>>::FitResult {
-                let data = (x, y);
-                <Self as Model>::fit(self, &data)
             }
             fn predict(&self, x: &Self::X) -> Self::PredictResult {
                 if self.settings.fit_intercept {

@@ -4,7 +4,7 @@ use num_traits::Float;
 use crate::{
     error::NjangError,
     linear_model::{LinearModelSolver, LinearRegression, LinearRegressionSettings},
-    traits::{ClassificationModel, Container, Label, Model, RegressionModel, Scalar},
+    traits::{ClassificationModel, Container, Label, RegressionModel, Scalar},
 };
 
 use super::{argmax, dummies, unique_labels};
@@ -29,24 +29,16 @@ where
     pub labels: Vec<L>,
 }
 
-impl<'a, T: Scalar, L: Label> Model<'a> for RidgeClassification<Array2<T>, Array1<T>, L> {
-    type FitResult = Result<(), NjangError>;
-    type Data = (&'a Array2<T>, &'a Array1<L>);
-    fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
-        let (x, y) = data;
-        self.labels = unique_labels((*y).iter()).into_iter().copied().collect();
-        let y_reg = dummies(*y, &self.labels);
-        RegressionModel::fit(&mut self.model, *x, &y_reg)
-    }
-}
 impl<T: Scalar, L: Label> ClassificationModel for RidgeClassification<Array2<T>, Array1<T>, L> {
     type X = Array2<T>;
     type Y = Array1<L>;
+    type FitResult = Result<(), NjangError>;
     type PredictResult = Result<Array1<L>, ()>;
     type PredictProbaResult = Result<Array2<T>, ()>;
-    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as Model<'_>>::FitResult {
-        let data = (x, y);
-        <Self as Model>::fit(self, &data)
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
+        self.labels = unique_labels(y.iter()).into_iter().copied().collect();
+        let y_reg = dummies(y, &self.labels);
+        RegressionModel::fit(&mut self.model, x, &y_reg)
     }
     fn predict(&self, x: &Self::X) -> Self::PredictResult {
         let raw_prediction = self.model.predict(x)?;

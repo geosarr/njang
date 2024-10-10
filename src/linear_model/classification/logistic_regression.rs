@@ -13,7 +13,7 @@ use crate::{
         randu_2d, LinearModelParameter,
     },
     solver::stochastic_gradient_descent,
-    traits::{ClassificationModel, Container, Label, Model, Scalar},
+    traits::{ClassificationModel, Container, Label, Scalar},
 };
 
 use ndarray::{Array1, Array2, Axis};
@@ -85,21 +85,23 @@ impl<C: Container, I, L> LogisticRegression<C, I, L> {
     }
 }
 
-impl<'a, T: Scalar, L: Label> Model<'a> for LogisticRegression<Array2<T>, Array1<T>, L> {
+impl<T: Scalar, L: Label> ClassificationModel for LogisticRegression<Array2<T>, Array1<T>, L> {
+    type X = Array2<T>;
+    type Y = Array1<L>;
     type FitResult = Result<(), NjangError>;
-    type Data = (&'a Array2<T>, &'a Array1<L>);
-    fn fit(&mut self, data: &Self::Data) -> Self::FitResult {
-        let (x, y) = data;
+    type PredictResult = Result<Array1<L>, ()>;
+    type PredictProbaResult = Result<Array2<T>, ()>;
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
         let (xlen, ylen) = (x.nrows(), y.len());
         if xlen != ylen {
             return Err(NjangError::NotMatchedLength { xlen, ylen });
         }
-        self.labels = unique_labels((**y).iter()).into_iter().copied().collect();
-        let y_reg = dummies(*y, &self.labels);
+        self.labels = unique_labels(y.iter()).into_iter().copied().collect();
+        let y_reg = dummies(y, &self.labels);
         // let (x_centered, x_mean, y_centered, y_mean) = preprocess(*x, *y);
         self.parameter.coef = match self.settings.solver {
             LinearModelSolver::Sgd => {
-                self.set_internal(*x, &y_reg);
+                self.set_internal(x, &y_reg);
                 // Rescale step_size and penalty(ies) to scale (sub)gradients correctly
                 self.scale_step_size();
                 self.scale_penalty();
@@ -110,7 +112,7 @@ impl<'a, T: Scalar, L: Label> Model<'a> for LogisticRegression<Array2<T>, Array1
                 );
                 let coef = randu_2d::<T, _>(&[n_features, n_labels], rng);
                 Some(stochastic_gradient_descent(
-                    *x,
+                    x,
                     &y_reg,
                     coef,
                     self.gradient_function(),
@@ -118,7 +120,7 @@ impl<'a, T: Scalar, L: Label> Model<'a> for LogisticRegression<Array2<T>, Array1
                 ))
             }
             LinearModelSolver::Bgd => {
-                self.set_internal(*x, &y_reg);
+                self.set_internal(x, &y_reg);
                 let (n_targets, n_features, rng) = (
                     self.internal.n_targets,
                     self.internal.n_features,
@@ -126,7 +128,7 @@ impl<'a, T: Scalar, L: Label> Model<'a> for LogisticRegression<Array2<T>, Array1
                 );
                 let coef = randu_2d(&[n_features, n_targets], rng);
                 Some(batch_gradient_descent(
-                    *x,
+                    x,
                     &y_reg,
                     coef,
                     self.gradient_function(),
@@ -140,17 +142,6 @@ impl<'a, T: Scalar, L: Label> Model<'a> for LogisticRegression<Array2<T>, Array1
             }
         };
         Ok(())
-    }
-}
-
-impl<T: Scalar, L: Label> ClassificationModel for LogisticRegression<Array2<T>, Array1<T>, L> {
-    type X = Array2<T>;
-    type Y = Array1<L>;
-    type PredictResult = Result<Array1<L>, ()>;
-    type PredictProbaResult = Result<Array2<T>, ()>;
-    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> <Self as Model<'_>>::FitResult {
-        let data = (x, y);
-        <Self as Model>::fit(self, &data)
     }
     fn predict(&self, x: &Self::X) -> Self::PredictResult {
         if let Some(coef) = self.coef() {
@@ -191,7 +182,7 @@ fn log() {
         max_iter: Some(100000),
     };
     let mut model = LogisticRegression::<Array2<_>, _, _>::new(settings);
-    match Model::fit(&mut model, &(&x, &y)) {
+    match model.fit(&x, &y) {
         Ok(_) => {
             println!("{:?}", model.predict_proba(&x));
             let y_pred = model.predict(&x);
