@@ -32,25 +32,29 @@ pub struct NearestNeighborsSettings<D> {
     n_neighbors: usize,
     leaf_size: Option<usize>,
 }
-pub struct NearestNeighbors<D, K: Container> {
+pub struct NearestNeighbors<D, K: Container, Y> {
     pub settings: NearestNeighborsSettings<D>,
     tree: Option<Tree<K>>,
+    y: Option<Y>,
 }
 
-impl<D: Fn(&K, &K) -> K::Elem, K: Container> NearestNeighbors<D, K> {
+impl<D: Fn(&K, &K) -> K::Elem, K: Container, Y> NearestNeighbors<D, K, Y> {
     pub fn new(settings: NearestNeighborsSettings<D>) -> Self {
         Self {
             settings,
             tree: None,
+            y: None,
         }
     }
 }
 
-impl<D, T> RegressionModel for NearestNeighbors<D, Array1<T>>
+impl<D, T> RegressionModel for NearestNeighbors<D, Array1<T>, Array2<T>>
 where
-    // K: Container + Clone +
+    // K: Container +
+    // Clone +
     // core::ops::Index<usize> +
-    // core::fmt::Debug + Algebra,
+    // core::fmt::Debug
+    // + Algebra,
     T: Scalar + Mul<Array1<T>, Output = Array1<T>>,
     // for<'a> K: Add<&'a K, Output = K> + Clone,
     // for<'a> &'a K: Sub<&'a K, Output = K>,
@@ -58,7 +62,7 @@ where
     //     Target: Algebra<Elem = K::Elem>,
 {
     type FitResult = Result<(), ()>;
-    type PredictResult = Result<(), ()>;
+    type PredictResult = Result<Array2<T>, ()>;
     type X = Array2<T>;
     type Y = Array2<T>;
     fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
@@ -81,46 +85,53 @@ where
                 }
             }
         };
+        self.y = Some(y.clone());
         Ok(())
     }
     fn predict(&self, x: &Self::X) -> Self::PredictResult {
-        for point in x.axis_iter(Axis(0)) {
+        let y = self.y.as_ref().unwrap();
+        let mut predictions = Array2::zeros((x.nrows(), y.ncols()));
+        for (k, point) in x.axis_iter(Axis(0)).enumerate() {
             if let Some(ref tree) = self.tree {
-                match tree {
+                let prediction = match tree {
                     Tree::KdTree(kd_tree) => {
-                        kd_tree
+                        let mut tree = kd_tree
                             .k_nearest_neighbors(
                                 &point.to_owned(),
                                 self.settings.n_neighbors,
                                 &self.settings.distance,
                             )
-                            .unwrap()
-                            .delete()
-                            .unwrap()
-                            .point
+                            .unwrap();
+                        let mut indices = Vec::with_capacity(tree.len() + 1);
+                        while !tree.is_empty() {
+                            indices.push(tree.delete().unwrap().point);
+                        }
+                        y.select(Axis(0), &indices).mean_axis(Axis(0)).unwrap()
                     }
                     Tree::BallTree(ball_tree) => {
-                        ball_tree
+                        let mut tree = ball_tree
                             .k_nearest_neighbors(
                                 &point.to_owned(),
                                 self.settings.n_neighbors,
                                 &self.settings.distance,
                             )
-                            .unwrap()
-                            .delete()
-                            .unwrap()
-                            .point
-                            .number
+                            .unwrap();
+                        let mut indices = Vec::with_capacity(tree.len() + 1);
+                        while !tree.is_empty() {
+                            indices.push(tree.delete().unwrap().point.number);
+                        }
+                        y.select(Axis(0), &indices).mean_axis(Axis(0)).unwrap()
                     }
                 };
+                predictions.row_mut(k).assign(&prediction);
             }
         }
-        Err(())
+        Ok(predictions)
     }
 }
 
 #[test]
-fn neighbors() {
+fn neighbors_() {
     use ndarray::array;
     let x = array![[5., 4.], [2., 6.], [13., 3.], [3., 1.], [10., 2.], [8., 7.]];
     let y = array![[0., 0.], [1., 1.], [2., 2.], [3., 3.], [4., 4.], [5., 5.]];
@@ -130,11 +141,12 @@ fn neighbors() {
         n_neighbors: 3,
         leaf_size: Some(1),
     };
-    let mut neighbor = NearestNeighbors::<_, Array1<f32>>::new(settings);
+    let mut neighbor = NearestNeighbors::<_, Array1<f32>, Array2<f32>>::new(settings);
     neighbor.fit(&x, &y);
 
     // let mut neighbors =
-    // print!("{:#?}", neighbors.delete());
+
+    print!("{:#?}", neighbor.predict(&x));
 }
 
 #[derive(Debug, Clone)]
