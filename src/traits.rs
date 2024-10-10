@@ -39,7 +39,7 @@ impl Scalar for f32 {}
 impl Scalar for f64 {}
 
 /// Handles label types for classification tasks.
-pub trait Label: Eq + Ord + core::hash::Hash + Copy + 'static {}
+pub trait Label: Eq + Ord + core::hash::Hash + Copy {}
 macro_rules! impl_label(
     ( $( $t:ty ),* )=> {
         $(
@@ -90,32 +90,6 @@ where
         self.len()
     }
 }
-
-macro_rules! impl_container_arr(
-    ( $( $n:literal ),* )=> {
-        $(
-            impl<T: Copy> Container for [T; $n] {
-                type Elem = T;
-                type SelectionOutput = Vec<T>;
-                type LenghtOutput = usize;
-                fn dimension(&self) -> &[usize] {
-                    &[$n]
-                }
-                fn selection(&self, _axis: usize, indices: &[usize]) -> Self::SelectionOutput {
-                    let mut res = Vec::with_capacity(indices.len());
-                    for idx in indices {
-                        res.push(self[*idx]);
-                    }
-                    res
-                }
-                fn length(&self) -> Self::LenghtOutput {
-                    self.len()
-                }
-            }
-        )*
-    }
-);
-impl_container_arr!(1, 2, 3);
 
 /// Trait implementing operations on modeling data structures.
 pub trait Algebra: Container {

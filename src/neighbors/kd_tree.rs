@@ -38,11 +38,12 @@ impl<K> Node<K> {
 /// The caller must make sure there are no duplicate keys inserted in the tree.
 /// # Example
 /// ```
+/// use ndarray::array;
 /// use njang::prelude::*;
 /// let mut bt = KdTree::new();
-/// bt.insert([0]);
-/// bt.insert([1]);
-/// bt.insert([2]);
+/// bt.insert(array![0f32]);
+/// bt.insert(array![1.]);
+/// bt.insert(array![2.]);
 /// assert_eq!(bt.len(), 3);
 /// ```
 #[derive(Debug, Clone)]
@@ -58,8 +59,9 @@ impl<K: Container> Default for KdTree<K> {
     ///
     /// # Example
     /// ```
+    /// use ndarray::Array1;
     /// use njang::prelude::*;
-    /// let bt = KdTree::<[usize; 1]>::default();
+    /// let bt = KdTree::<Array1<f32>>::default();
     /// assert_eq!(bt.len(), 0);
     /// ```
     fn default() -> Self {
@@ -72,8 +74,9 @@ impl<K: Container> KdTree<K> {
     ///
     /// # Example
     /// ```
+    /// use ndarray::Array1;
     /// use njang::prelude::*;
-    /// let bt = KdTree::<[usize; 1]>::new();
+    /// let bt = KdTree::<Array1<f32>>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
     pub fn new() -> Self {
@@ -83,8 +86,9 @@ impl<K: Container> KdTree<K> {
     /// Gives the number of keys in the tree.
     /// # Example
     /// ```
+    /// use ndarray::Array1;
     /// use njang::prelude::*;
-    /// let bt = KdTree::<[f32; 2]>::new();
+    /// let bt = KdTree::<Array1<f32>>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
     pub fn len(&self) -> usize {
@@ -94,9 +98,10 @@ impl<K: Container> KdTree<K> {
     /// Tests whether or not the tree is empty.
     /// # Example
     /// ```
+    /// use ndarray::array;
     /// use njang::prelude::*;
     /// let mut bt = KdTree::new();
-    /// bt.insert([1]);
+    /// bt.insert(array![1f32]);
     /// assert!(!bt.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -149,10 +154,11 @@ where
     ///
     /// # Example
     /// ```
+    /// Array1<f32>
     /// use njang::prelude::*;
-    /// let mut bt = KdTree::<[isize; 1]>::new();
-    /// bt.insert([-1]);
-    /// bt.insert([-2]);
+    /// let mut bt = KdTree::<Array1<f32>>::new();
+    /// bt.insert([-1.]);
+    /// bt.insert([-2.]);
     /// assert_eq!(bt.len(), 2);
     /// ```
     pub fn insert(&mut self, key: K) {

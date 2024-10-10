@@ -63,8 +63,9 @@ impl<K: Container> BallTree<K> {
     ///
     /// # Example
     /// ```
+    /// use ndarray::Array1;
     /// use njang::prelude::*;
-    /// let bt = BallTree::<[usize; 1]>::new();
+    /// let bt = BallTree::<Array1<f32>>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
     pub fn new() -> Self {
@@ -75,8 +76,9 @@ impl<K: Container> BallTree<K> {
     ///
     /// # Example
     /// ```
+    /// use ndarray::Array1;
     /// use njang::prelude::*;
-    /// let bt = BallTree::<[f32; 2]>::new();
+    /// let bt = BallTree::<Array1<f32>>::new();
     /// assert_eq!(bt.len(), 0);
     /// ```
     pub fn len(&self) -> usize {
@@ -86,8 +88,9 @@ impl<K: Container> BallTree<K> {
     /// Tests whether or not the tree is empty.
     /// # Example
     /// ```
+    /// use ndarray::Array1;
     /// use njang::prelude::*;
-    /// let mut bt = BallTree::<[f32; 3]>::new();
+    /// let mut bt = BallTree::<Array1<f32>>::new();
     /// assert!(bt.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
