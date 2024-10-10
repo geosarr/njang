@@ -41,7 +41,7 @@ impl<K> Node<K> {
 pub struct KthNearestNeighbor<D> {
     /// Id of point.
     pub number: usize,
-    /// Distance from query point.
+    /// Distance from a point.
     pub dist: D,
 }
 impl<D: PartialOrd> PartialOrd for KthNearestNeighbor<D> {
@@ -83,6 +83,7 @@ impl<K: Container> Default for KdTree<K> {
         Self::new()
     }
 }
+
 impl<K: Container> KdTree<K> {
     /// Creates an empty tree instance.
     ///
@@ -96,7 +97,7 @@ impl<K: Container> KdTree<K> {
         Self { root: None, len: 0 }
     }
 
-    /// Gives the number of (key, value) pairs in the tree.
+    /// Gives the number of keys in the tree.
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -159,8 +160,10 @@ where
         None
     }
 
-    /// Inserts a `(key, value)` pair in the tree. The caller must make sure
-    /// that the tree does not contain `key`.
+    /// Inserts a `key` in the tree. The caller must make sure that the tree
+    /// does not contain a node value equal to `key`. This method is useful for
+    /// online tree construction.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -233,19 +236,21 @@ where
             &distance,
         ))
     }
-    pub fn from_vec(keys: &mut Vec<(usize, K)>) -> Option<Self>
+    pub fn from<Keys>(keys: Keys) -> Option<Self>
     where
+        Keys: IntoIterator<Item = K>,
         K: Clone + Index<usize> + Debug,
         K::Elem: Zero + Sub<K::Elem, Output = K::Elem> + Debug,
     {
+        let mut keys = keys.into_iter().enumerate().collect::<Vec<_>>();
         if keys.is_empty() {
             return None;
         }
         let dimension = keys[0].1.length();
-        let n = keys.len();
-        let dim_max_spread = find_dim_max_spread(keys, 0, n, dimension);
-        let median = n / 2;
-        keys[0..n].sort_by(|a, b| {
+        let len = keys.len();
+        let dim_max_spread = find_dim_max_spread(&keys, 0, len, dimension);
+        let median = len / 2;
+        keys[0..len].sort_by(|a, b| {
             a.1[dim_max_spread]
                 .partial_cmp(&b.1[dim_max_spread])
                 .unwrap()
@@ -256,9 +261,16 @@ where
             keys[median].0,
             Some(dim_max_spread),
         )));
-        build_tree(&mut root, ChildType::Left, keys, 0, median, dimension);
-        build_tree(&mut root, ChildType::Right, keys, median + 1, n, dimension);
-        Some(Self { root: root, len: n })
+        build_tree(&mut root, ChildType::Left, &mut keys, 0, median, dimension);
+        build_tree(
+            &mut root,
+            ChildType::Right,
+            &mut keys,
+            median + 1,
+            len,
+            dimension,
+        );
+        Some(Self { root, len })
     }
 }
 
@@ -298,7 +310,7 @@ fn build_tree<K>(
         };
         return;
     }
-    let dim_max_spread = find_dim_max_spread(keys, start, end, dimension);
+    let dim_max_spread = find_dim_max_spread(&*keys, start, end, dimension);
     keys[start..end].sort_by(|a, b| {
         a.1[dim_max_spread]
             .partial_cmp(&b.1[dim_max_spread])
@@ -359,12 +371,7 @@ fn build_tree<K>(
     };
 }
 
-fn find_dim_max_spread<K>(
-    keys: &mut Vec<(usize, K)>,
-    start: usize,
-    end: usize,
-    dimension: usize,
-) -> usize
+fn find_dim_max_spread<K>(keys: &[(usize, K)], start: usize, end: usize, dimension: usize) -> usize
 where
     K: Clone + Index<usize> + Debug,
     K::Output: PartialOrd + Zero + Copy + Sub<K::Output, Output = K::Output> + Debug,
@@ -441,11 +448,8 @@ fn kd() {
         array![3., 1.],
         array![10., 2.],
         array![8., 7.],
-    ]
-    .into_iter()
-    .enumerate()
-    .collect::<Vec<_>>();
-    let k = KdTree::from_vec(&mut v).unwrap();
+    ];
+    let k = KdTree::from(v).unwrap();
     print!("{:#?}", k);
     let mut neighbors = k
         .k_nearest_neighbors(&array![9., 4.], 4, |a, b| (a - b).minkowsky(2.))
