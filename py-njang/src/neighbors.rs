@@ -1,5 +1,5 @@
 use ndarray::{Array1, Axis};
-use njang::prelude::{Algebra, KdTree};
+use njang::prelude::{Algebra, BallTree as RustBallTree, KdTree};
 use numpy::{PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
 
@@ -21,6 +21,11 @@ pub struct KDTree {
     tree: KdTree<Array1<f64>>,
 }
 
+#[pyclass]
+pub struct BallTree {
+    tree: RustBallTree<Array1<f64>>,
+}
+
 #[pymethods]
 impl KDTree {
     #[new]
@@ -33,13 +38,9 @@ impl KDTree {
                 .for_each(drop);
             Ok(Self { tree })
         } else if method == "robust" {
-            let mut keys = x
-                .axis_iter(Axis(0))
-                .enumerate()
-                .map(|(pos, row)| (pos, row.to_owned()))
-                .collect::<Vec<_>>();
+            let keys = x.axis_iter(Axis(0)).map(|row| row.to_owned());
             Ok(Self {
-                tree: KdTree::from_vec(&mut keys).unwrap(),
+                tree: KdTree::from(keys).unwrap(),
             })
         } else {
             Err(PyValueError::new_err(
@@ -69,4 +70,38 @@ impl KDTree {
             Err(PyValueError::new_err("`k` should be >= 0"))
         }
     }
+}
+
+#[pymethods]
+impl BallTree {
+    #[new]
+    pub fn new(x: PyReadonlyArray2<f64>, leaf_size: isize) -> PyResult<Self> {
+        let x = x.as_array();
+        let mut keys = x.axis_iter(Axis(0)).map(|row| row.to_owned());
+        Ok(Self {
+            tree: RustBallTree::from(keys, |a, b| (a - b).l2_norm(), leaf_size as usize).unwrap(),
+        })
+    }
+    // pub fn query(&self, key: PyReadonlyArray1<f64>, k: isize) ->
+    // PyResult<Vec<(usize, f64)>> {     if k >= 0 {
+    //         if let Some(heap) =
+    //             self.tree
+    //                 .k_nearest_neighbors(&key.as_array().to_owned(), k as usize,
+    // |a, b| {                     (a - b).l2_norm()
+    //                 })
+    //         {
+    //             let mut res = heap
+    //                 .to_vec()
+    //                 .iter()
+    //                 .map(|n| (n.number, n.dist))
+    //                 .collect::<Vec<_>>();
+    //             res.sort_by(|a, b| a.1.total_cmp(&b.1));
+    //             Ok(res)
+    //         } else {
+    //             Ok(vec![])
+    //         }
+    //     } else {
+    //         Err(PyValueError::new_err("`k` should be >= 0"))
+    //     }
+    // }
 }
