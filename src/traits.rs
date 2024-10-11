@@ -39,7 +39,7 @@ impl Scalar for f32 {}
 impl Scalar for f64 {}
 
 /// Handles label types for classification tasks.
-pub trait Label: Eq + Ord + core::hash::Hash + Copy {}
+pub trait Label: Eq + Ord + core::hash::Hash + Copy + core::fmt::Debug {}
 macro_rules! impl_label(
     ( $( $t:ty ),* )=> {
         $(

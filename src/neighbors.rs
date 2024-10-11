@@ -5,17 +5,19 @@ use core::{
     mem::replace,
     ops::{Add, Mul, Sub},
 };
+use std::os::raw;
 mod ball_tree;
 pub use ball_tree::*;
 
 mod kd_tree;
+use hashbrown::HashMap;
 pub use kd_tree::*;
 use ndarray::{Array1, Array2, Axis};
-use num_traits::{Float, FromPrimitive};
+use num_traits::{Float, FromPrimitive, Zero};
 
-use crate::traits::{Algebra, Container, RegressionModel, Scalar};
+use crate::traits::{Algebra, ClassificationModel, Container, Label, RegressionModel, Scalar};
 
-// #[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum NearestNeighborsSolver {
     KdTree,
     BallTree,
@@ -25,6 +27,7 @@ enum Tree<K: Container> {
     KdTree(KdTree<K>),
     BallTree(BallTree<K>),
 }
+
 // #[derive(Debug, Clone)]
 pub struct NearestNeighborsSettings<D> {
     solver: NearestNeighborsSolver,
@@ -48,44 +51,77 @@ impl<D: Fn(&K, &K) -> K::Elem, K: Container, Y> NearestNeighbors<D, K, Y> {
     }
 }
 
+fn fit<T, D, Y>(
+    solver: NearestNeighborsSolver,
+    x: &Array2<T>,
+    y: &Y,
+    distance: Option<&D>,
+    leaf_size: Option<usize>,
+) -> (Option<Tree<Array1<T>>>, Y)
+where
+    Y: Clone,
+    T: Scalar + Mul<Array1<T>, Output = Array1<T>>,
+    D: Fn(&Array1<T>, &Array1<T>) -> T,
+{
+    let keys = x.axis_iter(Axis(0)).map(|row| row.to_owned());
+    let tree = match solver {
+        NearestNeighborsSolver::BallTree => {
+            let mut tree = BallTree::from(keys, distance.unwrap(), leaf_size.unwrap());
+            if let Some(tree) = tree {
+                Some(Tree::BallTree(tree))
+            } else {
+                None
+            }
+        }
+        NearestNeighborsSolver::KdTree => {
+            let mut tree = KdTree::from(keys);
+            if let Some(tree) = tree {
+                Some(Tree::KdTree(tree))
+            } else {
+                None
+            }
+        }
+    };
+    (tree, y.clone())
+}
+
+fn modal<L: Label>(labels: &Array1<L>) -> Option<L> {
+    let mut counter = HashMap::<L, usize>::with_capacity(1 + labels.len());
+    let (mut modal_label, mut max_count) = (None, 0);
+    for label in labels {
+        let count = if counter.contains_key(label) {
+            counter[label] + 1
+        } else {
+            1
+        };
+        if count > max_count {
+            modal_label = Some(*label);
+            max_count = count;
+        }
+        counter.insert(*label, count);
+    }
+    modal_label
+}
+
 impl<D, T> RegressionModel for NearestNeighbors<D, Array1<T>, Array2<T>>
 where
-    // K: Container +
-    // Clone +
-    // core::ops::Index<usize> +
-    // core::fmt::Debug
-    // + Algebra,
     T: Scalar + Mul<Array1<T>, Output = Array1<T>>,
-    // for<'a> K: Add<&'a K, Output = K> + Clone,
-    // for<'a> &'a K: Sub<&'a K, Output = K>,
     D: Fn(&Array1<T>, &Array1<T>) -> T,
-    //     Target: Algebra<Elem = K::Elem>,
 {
     type FitResult = Result<(), ()>;
     type PredictResult = Result<Array2<T>, ()>;
     type X = Array2<T>;
     type Y = Array2<T>;
     fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
-        let keys = x.axis_iter(Axis(0)).map(|row| row.to_owned());
-        match self.settings.solver {
-            NearestNeighborsSolver::BallTree => {
-                let mut tree = BallTree::from(
-                    keys,
-                    &self.settings.distance,
-                    self.settings.leaf_size.unwrap(),
-                );
-                if let Some(tree) = tree {
-                    self.tree = Some(Tree::BallTree(tree));
-                }
-            }
-            NearestNeighborsSolver::KdTree => {
-                let mut tree = KdTree::from(keys);
-                if let Some(tree) = tree {
-                    self.tree = Some(Tree::KdTree(tree));
-                }
-            }
-        };
-        self.y = Some(y.clone());
+        let (tree, y_copied) = fit(
+            self.settings.solver,
+            x,
+            y,
+            Some(&self.settings.distance),
+            self.settings.leaf_size,
+        );
+        self.tree = tree;
+        self.y = Some(y_copied);
         Ok(())
     }
     fn predict(&self, x: &Self::X) -> Self::PredictResult {
@@ -130,23 +166,91 @@ where
     }
 }
 
+impl<D, T, L> ClassificationModel for NearestNeighbors<D, Array1<T>, Array1<L>>
+where
+    T: Scalar + Mul<Array1<T>, Output = Array1<T>>,
+    L: Label + Zero,
+    D: Fn(&Array1<T>, &Array1<T>) -> T,
+{
+    type FitResult = Result<(), ()>;
+    type PredictResult = Result<Array1<L>, ()>;
+    type PredictProbaResult = Result<(), ()>;
+    type X = Array2<T>;
+    type Y = Array1<L>;
+    fn fit(&mut self, x: &Self::X, y: &Self::Y) -> Self::FitResult {
+        let (tree, y_copied) = fit(
+            self.settings.solver,
+            x,
+            y,
+            Some(&self.settings.distance),
+            self.settings.leaf_size,
+        );
+        self.tree = tree;
+        self.y = Some(y_copied);
+        Ok(())
+    }
+    fn predict(&self, x: &Self::X) -> Self::PredictResult {
+        let y = self.y.as_ref().unwrap();
+        let mut predictions = Array1::zeros(x.nrows());
+        for (k, point) in x.axis_iter(Axis(0)).enumerate() {
+            if let Some(ref tree) = self.tree {
+                let prediction = match tree {
+                    Tree::KdTree(kd_tree) => {
+                        let indices = if let Some(heap) = kd_tree.k_nearest_neighbors(
+                            &point.to_owned(),
+                            self.settings.n_neighbors,
+                            &self.settings.distance,
+                        ) {
+                            let mut res = heap.to_vec().into_iter().collect::<Vec<_>>();
+                            res.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap());
+                            res.into_iter().map(|n| n.point).collect()
+                        } else {
+                            Vec::new()
+                        };
+                        modal(&y.select(Axis(0), &indices))
+                    }
+                    Tree::BallTree(ball_tree) => {
+                        let indices = if let Some(heap) = ball_tree.k_nearest_neighbors(
+                            &point.to_owned(),
+                            self.settings.n_neighbors,
+                            &self.settings.distance,
+                        ) {
+                            let mut res = heap.to_vec().into_iter().collect::<Vec<_>>();
+                            res.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap());
+                            res.into_iter().map(|n| n.point.number).collect()
+                        } else {
+                            Vec::new()
+                        };
+                        modal(&y.select(Axis(0), &indices))
+                    }
+                };
+                predictions[k] = prediction.unwrap();
+            }
+        }
+        Ok(predictions)
+    }
+
+    fn predict_proba(&self, x: &Self::X) -> Self::PredictProbaResult {
+        Ok(())
+    }
+}
+
 #[test]
 fn neighbors_() {
     use ndarray::array;
     let x = array![[5., 4.], [2., 6.], [13., 3.], [3., 1.], [10., 2.], [8., 7.]];
-    let y = array![[0., 0.], [1., 1.], [2., 2.], [3., 3.], [4., 4.], [5., 5.]];
+    let y = array![0, 1, 2, 3, 4, 5];
     let settings = NearestNeighborsSettings {
         solver: NearestNeighborsSolver::BallTree,
         distance: |a: &Array1<f32>, b: &Array1<f32>| (a - b).l2_norm(),
-        n_neighbors: 3,
+        n_neighbors: 1,
         leaf_size: Some(1),
     };
-    let mut neighbor = NearestNeighbors::<_, Array1<f32>, Array2<f32>>::new(settings);
-    neighbor.fit(&x, &y);
-
-    // let mut neighbors =
-
+    let mut neighbor = NearestNeighbors::new(settings);
+    ClassificationModel::fit(&mut neighbor, &x, &y);
     print!("{:#?}", neighbor.predict(&x));
+
+    assert_eq!(neighbor.predict(&x).unwrap(), y);
 }
 
 #[derive(Debug, Clone)]
