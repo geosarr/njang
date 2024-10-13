@@ -3,7 +3,7 @@ use njang::prelude::{
     Algebra, BallTree as RustBallTree, KdTree, NearestNeighbors, NearestNeighborsSettings,
     NearestNeighborsSolver, RegressionModel, Scalar,
 };
-use numpy::{PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
 
 type Distance<T> = fn(&Array1<T>, &Array1<T>) -> T;
@@ -179,5 +179,17 @@ impl KnnRegressor {
     pub fn fit(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) {
         self.model
             .fit(&x.as_array().to_owned(), &y.as_array().to_owned());
+    }
+
+    pub fn predict<'py>(
+        &self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<f64>,
+    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        if let Ok(prediction) = self.model.predict(&x.as_array().to_owned()) {
+            Ok(prediction.into_pyarray_bound(py))
+        } else {
+            Err(PyValueError::new_err("Prediction error"))
+        }
     }
 }
