@@ -1,7 +1,13 @@
-use ndarray::{Array1, Axis};
-use njang::prelude::{Algebra, BallTree as RustBallTree, KdTree};
+use ndarray::{Array1, Array2, Axis};
+use njang::prelude::{
+    Algebra, BallTree as RustBallTree, KdTree, NearestNeighbors, NearestNeighborsSettings,
+    NearestNeighborsSolver, RegressionModel, Scalar,
+};
 use numpy::{PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::{exceptions::PyValueError, prelude::*};
+
+type Distance<T> = fn(&Array1<T>, &Array1<T>) -> T;
+type RustNearestNeighbors<T, Y> = NearestNeighbors<Distance<T>, Array1<T>, Y>;
 
 /// Class responsible for building a K-dimensional tree.
 ///
@@ -24,6 +30,11 @@ pub struct KDTree {
 #[pyclass]
 pub struct BallTree {
     tree: RustBallTree<Array1<f64>>,
+}
+
+#[pyclass]
+pub struct KnnRegressor {
+    model: RustNearestNeighbors<f64, Array2<f64>>,
 }
 
 #[pymethods]
@@ -103,5 +114,70 @@ impl BallTree {
         } else {
             Err(PyValueError::new_err("`k` should be >= 0"))
         }
+    }
+}
+
+pub fn l2_distance(a: &Array1<f64>, b: &Array1<f64>) -> f64 {
+    (a - b).minkowsky(2.)
+}
+fn new_supervised_knn<D>(
+    n_neighbors: isize,
+    algorithm: &str,
+    mut leaf_size: Option<isize>,
+    distance: D,
+) -> PyResult<NearestNeighbors<D, Array1<f64>, Array2<f64>>>
+where
+    D: Fn(&Array1<f64>, &Array1<f64>) -> f64,
+{
+    let solver = if algorithm == "kdtree" {
+        NearestNeighborsSolver::KdTree
+    } else if algorithm == "balltree" {
+        let lsize = if let Some(lsize) = leaf_size {
+            if lsize <= 0 {
+                return Err(PyValueError::new_err("`leaf_size` should be >= 1"));
+            }
+        } else {
+            leaf_size = Some(40);
+        };
+        NearestNeighborsSolver::BallTree
+    } else {
+        return Err(PyValueError::new_err(
+            "The only supported algorithms are [`balltree`, `kdtree`]",
+        ));
+    };
+    if n_neighbors <= 0 {
+        return Err(PyValueError::new_err(
+            "`n_neighbors` and `leaf_size` should be >= 1",
+        ));
+    }
+    let settings = NearestNeighborsSettings {
+        solver,
+        distance,
+        n_neighbors: n_neighbors as usize,
+        leaf_size: leaf_size.map(|v| v as usize),
+    };
+    Ok(NearestNeighbors::new(settings))
+}
+
+#[pymethods]
+impl KnnRegressor {
+    #[new]
+    pub fn new(n_neighbors: isize, algorithm: &str, leaf_size: Option<isize>) -> PyResult<Self> {
+        // if p < 1. {
+        //     return Err(PyValueError::new_err("`p` should be >= 1."));
+        // }
+        // let minkowsky_distance = |a: &Array1<f64>, b: &Array1<f64>| (a -
+        // b).minkowsky(p);
+        let distance: Distance<f64> = l2_distance;
+        let model = match new_supervised_knn(n_neighbors, algorithm, leaf_size, distance) {
+            Ok(model) => model,
+            Err(error) => return Err(error),
+        };
+        Ok(Self { model })
+    }
+
+    pub fn fit(&mut self, x: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) {
+        self.model
+            .fit(&x.as_array().to_owned(), &y.as_array().to_owned());
     }
 }

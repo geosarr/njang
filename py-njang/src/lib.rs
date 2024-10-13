@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 mod linear_model;
 mod neighbors;
 use linear_model::{LinearRegression, LogisticRegression, RidgeRegression};
-use neighbors::{BallTree, KDTree};
+use neighbors::{BallTree, KDTree, KnnRegressor};
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -19,5 +19,6 @@ fn njang(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LogisticRegression>().unwrap();
     m.add_class::<KDTree>().unwrap();
     m.add_class::<BallTree>().unwrap();
+    m.add_class::<KnnRegressor>().unwrap();
     Ok(())
 }

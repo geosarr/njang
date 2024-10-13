@@ -30,10 +30,10 @@ enum Tree<K: Container> {
 
 // #[derive(Debug, Clone)]
 pub struct NearestNeighborsSettings<D> {
-    solver: NearestNeighborsSolver,
-    distance: D,
-    n_neighbors: usize,
-    leaf_size: Option<usize>,
+    pub solver: NearestNeighborsSolver,
+    pub distance: D,
+    pub n_neighbors: usize,
+    pub leaf_size: Option<usize>,
 }
 pub struct NearestNeighbors<D, K: Container, Y> {
     pub settings: NearestNeighborsSettings<D>,
@@ -240,12 +240,17 @@ fn neighbors_() {
     use ndarray::array;
     let x = array![[5., 4.], [2., 6.], [13., 3.], [3., 1.], [10., 2.], [8., 7.]];
     let y = array![0, 1, 2, 3, 4, 5];
+    fn l2_distance(a: &Array1<f64>, b: &Array1<f64>) -> f64 {
+        (a - b).minkowsky(2.)
+    }
+
     let settings = NearestNeighborsSettings {
         solver: NearestNeighborsSolver::BallTree,
-        distance: |a: &Array1<f32>, b: &Array1<f32>| (a - b).l2_norm(),
+        distance: l2_distance,
         n_neighbors: 1,
         leaf_size: Some(1),
     };
+
     let mut neighbor = NearestNeighbors::new(settings);
     ClassificationModel::fit(&mut neighbor, &x, &y);
     print!("{:#?}", neighbor.predict(&x));
