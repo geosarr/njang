@@ -33,7 +33,7 @@ impl<K> Node<K> {
     }
 }
 
-/// Implementation of a Kd-tree.
+/// Implementation of a K-dimensional tree.
 ///
 /// The caller must make sure there are no duplicate keys inserted in the tree.
 /// # Example
@@ -148,9 +148,16 @@ where
         None
     }
 
-    /// Inserts a `key` in the tree. The caller must make sure that the tree
-    /// does not contain a node value equal to `key`. This method is useful for
-    /// online tree construction.
+    /// Inserts a `key` in the tree.
+    ///
+    /// The caller must make sure that the tree does not already contain `key`,
+    /// to avoid duplicates and error when retrieving nearest neighbors.
+    ///
+    /// This method is useful for online tree construction, when all the
+    /// points to insert are not available at the same time. Building the
+    /// tree with this mehod does not guarantee a balanced tree, so the
+    /// caller may expect poor performance when retrieving the nearest
+    /// neighbors, however inserting an element is fast on average.
     ///
     /// # Example
     /// ```
@@ -166,65 +173,32 @@ where
         Self::put(&mut self.root, key, self.len, level);
         self.len += 1;
     }
-    /// Searches the nearest neighbors of a `key` in the tree.
+
+    /// Inserts `keys` in the tree.
     ///
-    /// Adapted from [Parallel k Nearest Neighbor Graph Construction Using
-    /// Tree-Based Data Structures][paper]. The distance metric is provided by
-    /// the caller.
+    /// The caller must make sure that the `keys` does not have duplicate
+    /// elements to avoid errors when retrieving nearest neighbors.
     ///
-    /// It returns a max oriented binary heap collecting the k nearest neighbors
-    /// of `key` located in the tree. It means that the top element of the heap
-    /// (accessible in O(1) running time) is the furthest from `key`.
+    /// This method is useful for offline tree construction, when all the
+    /// points to insert are available at the same time. Building the
+    /// tree with this mehod guarantees an (almost) balanced tree, so the caller
+    /// may expect faster nearest neighbors retrieval, at the cost of
+    /// slower tree construction.
+    ///
+    /// Adapted from the paper: [Parallel k Nearest Neighbor Graph Construction
+    /// Using Tree-Based Data Structures][paper].
     ///
     /// # Example
     /// ```
-    /// use ndarray::array;
+    /// use ndarray::{array, Array1};
     /// use njang::prelude::*;
-    /// let mut bt = KdTree::<_>::new();
-    /// let a = array![5., 4.];
-    /// let b = array![2., 6.];
-    /// let c = array![13., 3.];
-    /// let d = array![3., 1.];
-    /// let e = array![10., 2.];
-    /// let f = array![8., 7.];
-    /// bt.insert(a.view());
-    /// bt.insert(b.view());
-    /// bt.insert(c.view());
-    /// bt.insert(d.view());
-    /// bt.insert(e.view());
-    /// bt.insert(f.view());
-    /// let mut knn = bt
-    ///     .k_nearest_neighbors(&array![9., 4.].view(), 4, |a, b| (a - b).minkowsky(2.))
-    ///     .unwrap();
-    /// assert_eq!(2, knn.delete().unwrap().point);
-    /// assert_eq!(0, knn.delete().unwrap().point);
-    /// assert_eq!(5, knn.delete().unwrap().point);
-    /// assert_eq!(4, knn.delete().unwrap().point);
+    /// let mut bt = KdTree::<Array1<f32>>::new();
+    /// bt.insert(array![-1.]);
+    /// bt.insert(array![-2.]);
+    /// assert_eq!(bt.len(), 2);
     /// ```
     ///
     /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
-    pub fn k_nearest_neighbors<D>(
-        &self,
-        key: &K,
-        k: usize,
-        distance: D,
-    ) -> Option<BinaryHeap<KthNearestNeighbor<usize, K::Elem>>>
-    where
-        K: Algebra + Debug,
-        K::Elem: Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
-        D: Fn(&K, &K) -> K::Elem,
-    {
-        if self.root.is_none() | (k == 0) {
-            return None;
-        }
-        Some(k_nearest_neighbors(
-            &self.root,
-            key,
-            BinaryHeap::with_capacity(k + 1),
-            k,
-            &distance,
-        ))
-    }
     pub fn from<Keys>(keys: Keys) -> Option<Self>
     where
         Keys: IntoIterator<Item = K>,
@@ -264,6 +238,67 @@ where
             dimension,
         );
         Some(Self { root, len })
+    }
+    /// Searches the nearest neighbors of a `key` in the tree.
+    ///
+    /// The distance metric is provided by the caller.
+    ///
+    /// It returns a max oriented binary heap collecting the k nearest neighbors
+    /// of `key` located in the tree. It means that the top element of the heap
+    /// (whose reference is accessible in O(1) running time) is the furthest
+    /// from `key`.
+    ///
+    /// Adapted from the paper: [Parallel k Nearest Neighbor Graph Construction
+    /// Using Tree-Based Data Structures][paper].
+    ///
+    /// # Example
+    /// ```
+    /// use ndarray::array;
+    /// use njang::prelude::*;
+    /// let mut bt = KdTree::<_>::new();
+    /// let a = array![5., 4.];
+    /// let b = array![2., 6.];
+    /// let c = array![13., 3.];
+    /// let d = array![3., 1.];
+    /// let e = array![10., 2.];
+    /// let f = array![8., 7.];
+    /// bt.insert(a.view());
+    /// bt.insert(b.view());
+    /// bt.insert(c.view());
+    /// bt.insert(d.view());
+    /// bt.insert(e.view());
+    /// bt.insert(f.view());
+    /// let mut knn = bt
+    ///     .k_nearest_neighbors(&array![9., 4.].view(), 4, |a, b| (a - b).minkowsky(2.))
+    ///     .unwrap();
+    /// assert_eq!(2, knn.delete().unwrap().point); // Third point inserted c, is the third closest to key.
+    /// assert_eq!(0, knn.delete().unwrap().point); // First point inserted a, is the third closest to key.
+    /// assert_eq!(5, knn.delete().unwrap().point); // Sixth point inserted f, is the second closest to key.
+    /// assert_eq!(4, knn.delete().unwrap().point); // Fifth point inserted e, is closest to key
+    /// ```
+    ///
+    /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
+    pub fn k_nearest_neighbors<D>(
+        &self,
+        key: &K,
+        k: usize,
+        distance: D,
+    ) -> Option<BinaryHeap<KthNearestNeighbor<usize, K::Elem>>>
+    where
+        K: Algebra + Debug,
+        K::Elem: Sub<Output = K::Elem> + Mul<Output = K::Elem> + Debug,
+        D: Fn(&K, &K) -> K::Elem,
+    {
+        if self.root.is_none() | (k == 0) {
+            return None;
+        }
+        Some(k_nearest_neighbors(
+            &self.root,
+            key,
+            BinaryHeap::with_capacity(k + 1),
+            k,
+            &distance,
+        ))
     }
 }
 

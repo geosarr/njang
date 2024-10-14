@@ -36,6 +36,7 @@ impl<K, T> Node<K, T> {
     }
 }
 
+/// Implementation of a ball tree
 #[derive(Debug)]
 pub struct BallTree<K: Container> {
     root: Option<Box<Node<K, K::Elem>>>,
@@ -86,7 +87,14 @@ impl<K: Container> BallTree<K> {
         self.len() == 0
     }
 
-    /// Builds a tree from an iterator of points.
+    /// Inserts `keys` in the tree.
+    ///
+    /// The caller must make sure that the `keys` does not have duplicate
+    /// elements to avoid errors when retrieving nearest neighbors.
+    ///
+    /// This method is useful for offline tree construction, when all the
+    /// points to insert are available at the same time. Tree construction is
+    /// relatively slow due (among others) distance computations to split data.
     ///
     /// # Example
     /// ```
@@ -96,6 +104,8 @@ impl<K: Container> BallTree<K> {
     /// let tree = BallTree::<_>::from(points, |a, b| (a - b).minkowsky(2.), 2);
     /// println!("{:#?}", tree);
     /// ```
+    ///
+    /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
     pub fn from<D, Keys>(keys: Keys, distance: D, leaf_size: usize) -> Option<Self>
     where
         Keys: IntoIterator<Item = K>,
@@ -123,6 +133,11 @@ impl<K: Container> BallTree<K> {
         Some(Self { root, len })
     }
 
+    ///
+    /// Adapted from the paper: [Parallel k Nearest Neighbor Graph Construction
+    /// Using Tree-Based Data Structures][paper].
+    ///
+    /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
     pub fn k_nearest_neighbors<D>(
         &self,
         key: &K,

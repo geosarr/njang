@@ -5,7 +5,7 @@ use ndarray_linalg::Lapack;
 
 use super::LinearModelInternal;
 
-// Computes the gradient of the square loss function for linear models (like
+/// Computes the gradient of the square loss function for linear models (like
 /// linear regression, Ridge regression, etc.)
 pub(crate) fn square_loss_gradient<T: Lapack, Y>(x: &Array2<T>, y: &Y, coef: &Y) -> Y
 where

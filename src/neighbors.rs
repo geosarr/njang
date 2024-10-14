@@ -283,15 +283,22 @@ impl<P: PartialEq, D: PartialOrd> PartialOrd for KthNearestNeighbor<P, D> {
     }
 }
 
-/// Implementation of priority queues using a `Vec` structure
+/// Implementation binary heaps (also known as priority
+/// queues) using a `Vec` structure.
+///
+/// The heaps are max-oriented, meaning the
+/// element that is poped first from a heap (with [.delete][BinaryHeap::delete]
+/// method) is a maximum among all elements present in the heap. One can get a
+/// reference to that maximum with [.maximum][BinaryHeap::maximum] method.
+///
 /// # Examples
 /// ```
 /// use njang::prelude::*;
 /// let mut bhqueue = BinaryHeap::with_capacity(3);
 /// assert_eq!(bhqueue.len(), 0);
 /// bhqueue.insert(0);
-/// bhqueue.insert(1);
 /// bhqueue.insert(2);
+/// bhqueue.insert(1);
 /// assert_eq!(bhqueue.len(), 3);
 /// assert_eq!(bhqueue.delete(), Some(2));
 /// assert_eq!(bhqueue.delete(), Some(1));
@@ -308,24 +315,26 @@ where
     n: usize,
     // Remarks:
     // - objects are nodes of the tree
-    // - in the implementation objects are stored in self.vec from index = 1 to index = capacity so
-    //   that index = 0 is always None object and:
+    // - objects are stored in self.vec from index = 1 to index = capacity so that index = 0 is
+    //   always None object and:
     //     - each node k's parent is at position k/2
     //     - each node k's children are at positions 2k and 2k+1
-    // - in the max oriented binary heap (with kind = HeapOrient::Max), parents are larger than
-    //   their children (smaller for min oriented heap)
+    // - parents are larger than their children
 }
 
 impl<T: PartialOrd> BinaryHeap<T> {
     /// Creates a new empty binary heap with an initial size.
+    ///
     /// # Panics
     /// If `capacity = 0`, then it panics.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
     /// let bhqueue = BinaryHeap::<&str>::with_capacity(1);
     /// assert_eq!(bhqueue.len(), 0);
     /// ```
+    ///
     /// # Time complexity
     /// This is expected to run in `O(capacity)`
     pub fn with_capacity(capacity: usize) -> Self {
@@ -342,6 +351,7 @@ impl<T: PartialOrd> BinaryHeap<T> {
     }
 
     /// Tests whether or not the binary heap is empty.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -354,6 +364,7 @@ impl<T: PartialOrd> BinaryHeap<T> {
     }
 
     /// Gives the number of objects in the binary heap.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -369,6 +380,7 @@ impl<T: PartialOrd> BinaryHeap<T> {
 
     /// Returns a reference of the maximum object in the binary heap, if any.
     /// Returns `None` otherwise.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -377,14 +389,16 @@ impl<T: PartialOrd> BinaryHeap<T> {
     /// bhqueue.insert(1);
     /// assert_eq!(bhqueue.maximum(), Some(&1));
     /// ```
+    ///
     /// # Time complexity
     /// This is expected to run in `O(1)`
     pub fn maximum(&self) -> Option<&T> {
         self.vec[1].as_ref()
     }
 
-    /// Doubles the size of the binary heap. Run time complexity is expected
-    /// to be `O(N)`
+    /// Doubles the size of the binary heap.
+    ///
+    /// Run time complexity is expected to be `O(N)`
     fn double(&mut self) {
         let mut vector = Vec::with_capacity(self.vec.len());
         for _ in 0..self.vec.len() {
@@ -393,8 +407,9 @@ impl<T: PartialOrd> BinaryHeap<T> {
         self.vec.append(&mut vector);
     }
 
-    /// Halves the size of the binary heap. Run time complexity is expected to
-    /// be `O(N)`
+    /// Halves the size of the binary heap.
+    ///
+    /// Run time complexity is expected to be `O(N)`
     fn halve(&mut self) {
         self.vec.truncate(self.vec.len() / 2);
     }
@@ -414,6 +429,7 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
     }
 
     /// Inserts an object into the binary heap.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -422,11 +438,14 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
     /// bhqueue.insert(-2);
     /// assert_eq!(bhqueue.len(), 2);
     /// ```
+    ///
     /// # Time complexity
     /// This is expected to run in `O(log(N))` on average (without doubling the
-    /// heap). Doubling is `O(N)`. If the definitive size of heap is known in
-    /// advance, it is better to use [.with_capacity][Self::with_capacity]
-    /// method to build the heap.
+    /// heap's size). Doubling is expected to run in `O(N)` and occurs when the
+    /// heap is full and we want to add a new element. If the definitive
+    /// size of heap is known in advance, it is better to use
+    /// [.with_capacity][Self::with_capacity] method with the expected size as
+    /// `capacity` to build the heap.
     pub fn insert(&mut self, key: T) {
         if self.n < self.vec.len() {
             self.vec[self.n] = Some(key);
@@ -466,6 +485,7 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
 
     /// Deletes and returns the maximum object in the binary heap, if any.
     /// Returns `None` otherwise.
+    ///
     /// # Example
     /// ```
     /// use njang::prelude::*;
@@ -474,8 +494,11 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
     /// bhqueue.insert(1);
     /// assert_eq!(bhqueue.delete(), Some(1));
     /// ```
+    ///
     /// # Time complexity
-    /// This is expected to run in O(log(N)) on average
+    /// This is expected to run in `O(log(N))` on average (without halving the
+    /// heap's size). Halving the heap is `O(N)` and occurs when only less than
+    /// `capacity`/4 elements are present in the heap while deleting.
     pub fn delete(&mut self) -> Option<T> {
         if self.is_empty() {
             None
@@ -494,10 +517,25 @@ impl<T: PartialOrd + Clone> BinaryHeap<T> {
     }
 
     /// Converts the binary heap to `Vec`.
+    ///
+    /// # Example
+    /// ```
+    /// use njang::prelude::*;
+    /// let mut bhqueue = BinaryHeap::<i32>::with_capacity(5);
+    /// bhqueue.insert(0);
+    /// bhqueue.insert(1);
+    /// bhqueue.insert(-1);
+    /// bhqueue.insert(-2);
+    /// bhqueue.insert(2);
+    /// assert_eq!(bhqueue.to_vec(), vec![2, 1, 0, -1, -2]);
+    /// ```
+    ///
+    /// # Time complexity
+    /// This is expected to run in `O(Nlog(N))`.
     pub fn to_vec(mut self) -> Vec<T> {
         let mut res = Vec::with_capacity(self.len());
         for _ in 0..self.len() {
-            res.push(self.delete().expect("Failed to delete"));
+            res.push(self.delete().expect("Failed to delete element from heap"));
         }
         res
     }
