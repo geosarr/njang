@@ -1,5 +1,4 @@
 use core::ops::{Add, Index, Mul, Sub};
-
 use num_traits::{Float, FromPrimitive, One, Zero};
 
 use crate::neighbors::KthNearestNeighbor;
@@ -310,14 +309,34 @@ where
         }
         return the_bests;
     }
-    // if let Some(ref pivot) = node.pivot{
+    // Visiting first the node closest to `key`.
     if let Some(ref child1) = node.child1 {
-        the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+        if let Some(ref child2) = node.child2 {
+            if let Some(ref pivot1) = child1.pivot {
+                if let Some(ref pivot2) = child2.pivot {
+                    // build_tree function ensures that pivot and radius are built together.
+                    // so it is safe to .unwrap() radius here.
+                    let dist1 = distance(key, pivot1) - child1.radius.unwrap();
+                    let dist2 = distance(key, pivot2) - child2.radius.unwrap();
+                    if dist1 < dist2 {
+                        // Visit child1 first
+                        the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+                        the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
+                    } else {
+                        the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
+                        the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+                    }
+                    return the_bests;
+                }
+            }
+            // Here either child1 or child2 is a leaf, no criterion is used to see the
+            // closest, since one of the pivots is unavailable
+            the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+            the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
+        } else {
+            the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+        }
     }
-    if let Some(ref child2) = node.child2 {
-        the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
-    }
-    // };
     the_bests
 }
 
