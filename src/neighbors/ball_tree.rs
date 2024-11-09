@@ -1,5 +1,4 @@
 use core::ops::{Add, Index, Mul, Sub};
-
 use num_traits::{Float, FromPrimitive, One, Zero};
 
 use crate::neighbors::KthNearestNeighbor;
@@ -102,7 +101,6 @@ impl<K: Container> BallTree<K> {
     /// use njang::prelude::*;
     /// let points = [array![0f32, 1.], array![1., 1.]];
     /// let tree = BallTree::<_>::from(points, |a, b| (a - b).minkowsky(2.), 2);
-    /// println!("{:#?}", tree);
     /// ```
     ///
     /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
@@ -133,9 +131,29 @@ impl<K: Container> BallTree<K> {
         Some(Self { root, len })
     }
 
-    ///
     /// Adapted from the paper: [Parallel k Nearest Neighbor Graph Construction
     /// Using Tree-Based Data Structures][paper].
+    ///
+    /// # Example
+    /// ```
+    /// use ndarray::array;
+    /// use njang::prelude::*;
+    /// let a = array![5., 4.];
+    /// let b = array![2., 6.];
+    /// let c = array![13., 3.];
+    /// let d = array![3., 1.];
+    /// let e = array![10., 2.];
+    /// let f = array![8., 7.];
+    /// let points = [a, b, c, d, e, f];
+    /// let mut bt = BallTree::<_>::from(points, |a, b| (a - b).minkowsky(2.), 2).unwrap();
+    /// let mut knn = bt
+    ///     .k_nearest_neighbors(&array![9., 4.], 4, |a, b| (a - b).minkowsky(2.))
+    ///     .unwrap();
+    /// assert_eq!(2, knn.delete().unwrap().point); // Third point inserted c, is the third closest to key.
+    /// assert_eq!(0, knn.delete().unwrap().point); // First point inserted a, is the third closest to key.
+    /// assert_eq!(5, knn.delete().unwrap().point); // Sixth point inserted f, is the second closest to key.
+    /// assert_eq!(4, knn.delete().unwrap().point); // Fifth point inserted e, is closest to key
+    /// ```
     ///
     /// [paper]: http://dx.doi.org/10.5821/hpgm15.1
     pub fn k_nearest_neighbors<D>(
@@ -143,7 +161,7 @@ impl<K: Container> BallTree<K> {
         key: &K,
         k: usize,
         distance: D,
-    ) -> Option<BinaryHeap<KthNearestNeighbor<Point<K>, K::Elem>>>
+    ) -> Option<BinaryHeap<KthNearestNeighbor<usize, K::Elem>>>
     where
         K: Container + core::fmt::Debug + PartialEq + Clone,
         K::Elem: Float,
@@ -254,10 +272,10 @@ where
 fn k_nearest_neighbors<K, D>(
     node: &Node<K, K::Elem>,
     key: &K,
-    mut the_bests: BinaryHeap<KthNearestNeighbor<Point<K>, K::Elem>>,
+    mut the_bests: BinaryHeap<KthNearestNeighbor<usize, K::Elem>>,
     k: usize,
     distance: &D,
-) -> BinaryHeap<KthNearestNeighbor<Point<K>, K::Elem>>
+) -> BinaryHeap<KthNearestNeighbor<usize, K::Elem>>
 where
     K: Container + core::fmt::Debug + PartialEq + Clone,
     K::Elem: Float,
@@ -265,7 +283,7 @@ where
 {
     if !the_bests.is_empty() && !node.is_leaf() {
         let dist_key_from_node = distance(key, node.pivot.as_ref().unwrap()) - node.radius.unwrap();
-        if dist_key_from_node >= distance(key, &the_bests.maximum().unwrap().point.value) {
+        if dist_key_from_node >= the_bests.maximum().unwrap().dist {
             return the_bests;
         }
     }
@@ -273,15 +291,15 @@ where
         for point in node.points.as_ref().unwrap() {
             let dist = distance(key, &point.value);
             if !the_bests.is_empty() {
-                if dist < distance(key, &the_bests.maximum().unwrap().point.value) {
+                if dist < the_bests.maximum().unwrap().dist {
                     the_bests.insert(KthNearestNeighbor {
-                        point: point.clone(),
+                        point: point.number,
                         dist,
                     });
                 }
             } else {
                 the_bests.insert(KthNearestNeighbor {
-                    point: point.clone(),
+                    point: point.number,
                     dist,
                 });
             }
@@ -291,14 +309,34 @@ where
         }
         return the_bests;
     }
-    // if let Some(ref pivot) = node.pivot{
+    // Visiting first the node closest to `key`.
     if let Some(ref child1) = node.child1 {
-        the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+        if let Some(ref child2) = node.child2 {
+            if let Some(ref pivot1) = child1.pivot {
+                if let Some(ref pivot2) = child2.pivot {
+                    // build_tree function ensures that pivot and radius are built together.
+                    // so it is safe to .unwrap() radius here.
+                    let dist1 = distance(key, pivot1) - child1.radius.unwrap();
+                    let dist2 = distance(key, pivot2) - child2.radius.unwrap();
+                    if dist1 < dist2 {
+                        // Visit child1 first
+                        the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+                        the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
+                    } else {
+                        the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
+                        the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+                    }
+                    return the_bests;
+                }
+            }
+            // Here either child1 or child2 is a leaf, no criterion is used to see the
+            // closest, since one of the pivots is unavailable
+            the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+            the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
+        } else {
+            the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
+        }
     }
-    if let Some(ref child2) = node.child2 {
-        the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
-    }
-    // };
     the_bests
 }
 

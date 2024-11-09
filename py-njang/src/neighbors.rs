@@ -104,7 +104,7 @@ impl BallTree {
                 let mut res = heap
                     .to_vec()
                     .iter()
-                    .map(|n| (n.point.number, n.dist))
+                    .map(|n| (n.point, n.dist))
                     .collect::<Vec<_>>();
                 res.sort_by(|a, b| a.1.total_cmp(&b.1));
                 Ok(res)

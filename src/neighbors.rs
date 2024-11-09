@@ -154,7 +154,7 @@ where
                             .unwrap();
                         let mut indices = Vec::with_capacity(tree.len() + 1);
                         while !tree.is_empty() {
-                            indices.push(tree.delete().unwrap().point.number);
+                            indices.push(tree.delete().unwrap().point);
                         }
                         y.select(Axis(0), &indices).mean_axis(Axis(0)).unwrap()
                     }
@@ -217,7 +217,7 @@ where
                         ) {
                             let mut res = heap.to_vec().into_iter().collect::<Vec<_>>();
                             res.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap());
-                            res.into_iter().map(|n| n.point.number).collect()
+                            res.into_iter().map(|n| n.point).collect()
                         } else {
                             Vec::new()
                         };
