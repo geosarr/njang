@@ -329,7 +329,7 @@ where
                     return the_bests;
                 }
             }
-            // Here either child1 or child2 is a leaf, no criterion is used to see the
+            // Here either child1 or child2 is a leaf, no criterion is used to get the
             // closest, since one of the pivots is unavailable
             the_bests = k_nearest_neighbors(child1, key, the_bests, k, distance);
             the_bests = k_nearest_neighbors(child2, key, the_bests, k, distance);
