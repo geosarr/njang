@@ -6,3 +6,4 @@ pub mod neighbors;
 pub mod prelude;
 mod solver;
 mod traits;
+mod tree_model;
